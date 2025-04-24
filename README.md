@@ -27,6 +27,6 @@ This tool is developed to simplify and automate basic characterization tests of 
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/your-username/DAQ-Pyvisa.git
+   git clone https://github.com/FernandoFGF/DAQ-Pyvisa.git
    cd DAQ-Pyvisa
    pip install requirements.txt
