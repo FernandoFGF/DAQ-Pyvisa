@@ -14,7 +14,7 @@ try:
     """
     import sys
     import customtkinter
-    import daq_gui_func_refactored as func_new
+    import gui_functions as func_new
     import daq_gui_iv as iv
     import daq_gui_spec as spec
     import daq_gui_wf as wf

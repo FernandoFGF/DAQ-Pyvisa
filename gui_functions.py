@@ -1,8 +1,10 @@
 """
-Refactored GUI Functions Module
+GUI Functions Module
 
-This module provides refactored GUI functions that use the new controller architecture.
-It separates GUI logic from business logic and uses the new instrument and controller classes.
+This module is the bridge between the Tk-based application
+(daq_gui_main) and the rest of the architecture: ``acquisition/`` for
+instrument I/O, ``analysis/`` for pure data analysis, and
+``config_loader`` for settings.
 
 Author: Fernando Fuentes-Guerra
 Date: 2025

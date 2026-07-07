@@ -1,198 +1,359 @@
+"""
+Laboratory Module
+
+This module provides utility functions for laboratory instrument operations,
+file management, and data acquisition tasks.
+
+Author: Fernando Fuentes-Guerra
+Date: 2025
+"""
+
 import errno
 import shutil
 import os
-from RsInstrument import * 
+from pathlib import Path
 import zipfile
 import winsound
 from datetime import date
 import time
 import pyvisa
-import dictionary_SCPI as ds
 import numpy as np
-import paramiko
-from getpass import getpass; from getpass import getuser
+import dictionary_SCPI as ds
+from config_loader import get_config, get_instrument_address, get_output_path
 
-#Func return de path output
-def path(file):
-    pathOUT='C:/Users/Ferna/Desktop/Laboratorio/Programacion-Automatizacion/Pyvisa/Output/'+ file + "/" + str(date.today())+"/"
-    return pathOUT
 
-#Func para la creacion de directorios
-def create_dir(path):
+# Configuration instance
+config = get_config()
+
+
+def get_path(measurement_type: str) -> Path:
+    """
+    Get the output path for a specific measurement type with today's date.
+    
+    Args:
+        measurement_type: Type of measurement ('IV Curves', 'Spectrum', 'Waveform')
+        
+    Returns:
+        Path object for the output directory with date subdirectory
+    """
+    # Map display names to config keys
+    type_mapping = {
+        'IV Curves': 'iv_curves',
+        'Spectrum': 'spectrum',
+        'Waveform': 'waveform'
+    }
+    
+    config_key = type_mapping.get(measurement_type, measurement_type.lower().replace(' ', '_'))
+    base_path = get_output_path(config_key)
+    
+    # Add today's date as subdirectory
+    dated_path = base_path / str(date.today())
+    
+    return dated_path
+
+
+def create_directory(path: Path) -> None:
+    """
+    Create a directory if it doesn't exist.
+    
+    Args:
+        path: Path object or string path to create
+    """
+    path = Path(path)
     try:
-        os.mkdir(path)
+        path.mkdir(parents=True, exist_ok=True)
     except OSError as e:
         if e.errno != errno.EEXIST:
-            raise
+            raise OSError(f"Failed to create directory {path}: {e}")
 
-import os
 
-#Func para la creacion de directorios en el mismo sitio
-def create_dir_in(nombre_carpeta):
-    # Obtener la ruta del directorio de ejecución del script
-    directorio_actual = os.getcwd()
-
-    # Comprobar si la carpeta ya existe
-    carpeta = os.path.join(directorio_actual, nombre_carpeta)
-    if os.path.exists(carpeta):
-        print(f"La carpeta '{nombre_carpeta}' ya existe en el directorio actual.")
+def create_directory_in_current(folder_name: str) -> Path:
+    """
+    Create a directory in the current working directory.
+    
+    Args:
+        folder_name: Name of the folder to create
+        
+    Returns:
+        Path object of the created folder
+    """
+    current_dir = Path.cwd()
+    folder_path = current_dir / folder_name
+    
+    if folder_path.exists():
+        print(f"Folder '{folder_name}' already exists in current directory.")
     else:
         try:
-            # Crear la carpeta
-            os.mkdir(carpeta)
-            print(f"Se ha creado la carpeta '{nombre_carpeta}' en el directorio actual.")
-        except OSError:
-            print(f"No se pudo crear la carpeta '{nombre_carpeta}'.")
-    return carpeta
+            folder_path.mkdir(parents=True, exist_ok=True)
+            print(f"Created folder '{folder_name}' in current directory.")
+        except OSError as e:
+            print(f"Could not create folder '{folder_name}': {e}")
+    
+    return folder_path
 
 
-#Func para borrar directorio si existe
-def delete_dir(filepath):
-    if os.path.exists(filepath) and os.path.isdir(filepath):
-        shutil.rmtree(filepath)  
-    if os.path.exists(filepath) and os.path.isfile(filepath):
-        os.remove(filepath) 
+def delete_path(filepath: Path) -> None:
+    """
+    Delete a file or directory if it exists.
+    
+    Args:
+        filepath: Path to file or directory to delete
+    """
+    filepath = Path(filepath)
+    
+    if filepath.exists():
+        if filepath.is_dir():
+            shutil.rmtree(filepath)
+        else:
+            filepath.unlink()
 
-#Func para la creacion del ZIP
-def create_zip(path, name):
-    zip = zipfile.ZipFile(path +"/" + name +'.zip', 'w')
-    for folder, subfolders, files in os.walk(path):
-        for file in files:
-            if file.endswith('.txt'):
-                zip.write(os.path.join(folder, file), os.path.relpath(os.path.join(folder,file), path), compress_type = zipfile.ZIP_DEFLATED) 
-    zip.close()
 
-#Func alarma cuando acaba
-def beep():
-    for i in range(3):
-        winsound.Beep(650-i*100, 500-i*50)
+def create_zip_archive(directory_path: Path, archive_name: str) -> None:
+    """
+    Create a ZIP archive containing all .txt files from a directory.
+    
+    Args:
+        directory_path: Path to directory to archive
+        archive_name: Name for the ZIP archive (without extension)
+    """
+    directory_path = Path(directory_path)
+    zip_path = directory_path / f"{archive_name}.zip"
+    
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for file_path in directory_path.rglob('*.txt'):
+            # Add file to zip with relative path
+            arcname = file_path.relative_to(directory_path)
+            zip_file.write(file_path, arcname)
+    
+    print(f"Created ZIP archive: {zip_path}")
 
-#Func contador en porcentaje
-def counter_finish(i, finish):
-    #if (round(i/int(finish)*100, 1)%5 == 0):
-    print(str(round(i/int(finish)*100, 2))+" %")
 
-#Func creacion fichero data (waveform)
-def create_data(path, rta, startTime, len, scope):
+def beep(count: int = None, frequency_start: int = None, duration: int = None) -> None:
+    """
+    Play audio beeps to signal completion.
+    
+    Args:
+        count: Number of beeps (default from config)
+        frequency_start: Starting frequency in Hz (default from config)
+        duration: Duration in milliseconds (default from config)
+    """
+    if not config.get_audio_setting('enable_beep', True):
+        return
+    
+    count = count or config.get_audio_setting('beep_count', 3)
+    frequency_start = frequency_start or config.get_audio_setting('beep_frequency_start', 650)
+    duration = duration or config.get_audio_setting('beep_duration', 500)
+    
+    for i in range(count):
+        freq = frequency_start - i * 100
+        dur = duration - i * 50
+        winsound.Beep(freq, dur)
 
-    if(scope=='1'):
 
-        trigger=float(rta.query(ds.lvlTrigger))
-        aRate=float(rta.query(ds.arate))
-        sRate=float(rta.query(ds.srate))
-        timeB=float(rta.query(ds.timeBase))
+def print_progress(current: int, total: int) -> None:
+    """
+    Print progress as percentage.
+    
+    Args:
+        current: Current iteration number
+        total: Total number of iterations
+    """
+    percentage = round(current / total * 100, 2)
+    print(f"{percentage}%")
 
-        with open(path, 'w') as f:
 
-            f.write('Resolucion(real): ' + str(sRate) + " ! "+ str(aRate) + ' Sa/s'+ '\n')
-            f.write('Num de puntos(real): ' + str(len) + '\n')
-            f.write('Time base scale: ' + str(timeB) + ' s'+ '\n')  
-            f.write('Trigger (0.5PE): ' +str(trigger)+ ' v' +'\n')
-            f.write('Tiempo de ejecucion: ' +str(round(((currentTime() - startTime)/60),2))+ ' min' +'\n')
+def create_data_file(
+    file_path: Path,
+    instrument,
+    start_time: float,
+    num_points: int,
+    scope_type: str
+) -> tuple:
+    """
+    Create a data file with measurement metadata.
+    
+    Args:
+        file_path: Path where to save the data file
+        instrument: PyVISA instrument resource
+        start_time: Start time of measurement (from time.time())
+        num_points: Number of data points acquired
+        scope_type: Type of oscilloscope ('1', '2', or '3')
         
-        result=[timeB, str(len)]
-    if(scope=='2'):
-
-        trigger=float(rta.query('TRIG:LEVel1?'))
-        aRate=float(rta.query(ds.arate))
-        sRate=float(rta.query(ds.srate))
-        timeB=float(rta.query(ds.timeBase))
-
-        with open(path, 'w') as f:
-
-            f.write('Resolucion(real): ' + str(sRate) + " ! "+ str(aRate) + ' Sa/s'+ '\n')
-            f.write('Num de puntos(real): ' + str(len) + '\n')
-            f.write('Time base scale: ' + str(timeB) + ' s'+ '\n')  
-            f.write('Trigger (0.5PE): ' +str(trigger)+ ' v' +'\n')
-            f.write('Tiempo de ejecucion: ' +str(round(((currentTime() - startTime)/60),2))+ ' min' +'\n')
-            
-        result=[timeB, str(len)]
-    if(scope=='3'):
-
-        trigger=float(rta.query(ds.lvlTriggerKey))
-        #aRate=float(rta.query(ds.arateKey))
-        sRate=float(rta.query(ds.srateKey))
-        timeB=float(rta.query(ds.timeBaseKey))
-        segPkey=float(rta.query(ds.segmentPKey))
-        #timeB=5
-
-        with open(path, 'w') as f:
-
-            #f.write('ok')
-            #f.write('Resolucion(real): ' + str(sRate) + " ! "+ str(aRate) + ' Sa/s'+ '\n')
-            f.write('Resolucion(SRATE): ' + str(sRate) + ' Sa/s'+ '\n')
-            f.write('Resolucion (real): '+str(len/(timeB*10))+' Sa/s'+ '\n')
-            f.write('Puntos con SRATE: '+str(sRate*timeB*10)+ '\n')
-            f.write('Num de puntos(real): ' + str(len) + '\n')
-            f.write('Segment Puntos: '+str(segPkey)+ '\n')
-            f.write('Time base scale: ' + str(timeB) + ' s'+ '\n')  
-            f.write('Trigger (0.5PE): ' +str(trigger)+ ' v' +'\n')
-            f.write('Tiempo de ejecucion: ' +str(round(((currentTime() - startTime)/60),2))+ ' min' +'\n')
+    Returns:
+        Tuple of (time_base, num_points_str)
+    """
+    file_path = Path(file_path)
+    
+    # Query instrument parameters based on scope type
+    if scope_type == '1':
+        trigger = float(instrument.query(ds.lvlTrigger))
+        acquisition_rate = float(instrument.query(ds.arate))
+        sample_rate = float(instrument.query(ds.srate))
+        time_base = float(instrument.query(ds.timeBase))
         
-        result=[timeB, str(len)]
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(f'Resolution (real): {sample_rate} ! {acquisition_rate} Sa/s\n')
+            f.write(f'Number of points (real): {num_points}\n')
+            f.write(f'Time base scale: {time_base} s\n')
+            f.write(f'Trigger (0.5PE): {trigger} V\n')
+            f.write(f'Execution time: {round((current_time() - start_time) / 60, 2)} min\n')
+        
+        return time_base, str(num_points)
+    
+    elif scope_type == '2':
+        trigger = float(instrument.query('TRIG:LEVel1?'))
+        acquisition_rate = float(instrument.query(ds.arate))
+        sample_rate = float(instrument.query(ds.srate))
+        time_base = float(instrument.query(ds.timeBase))
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(f'Resolution (real): {sample_rate} ! {acquisition_rate} Sa/s\n')
+            f.write(f'Number of points (real): {num_points}\n')
+            f.write(f'Time base scale: {time_base} s\n')
+            f.write(f'Trigger (0.5PE): {trigger} V\n')
+            f.write(f'Execution time: {round((current_time() - start_time) / 60, 2)} min\n')
+        
+        return time_base, str(num_points)
+    
+    elif scope_type == '3':
+        trigger = float(instrument.query(ds.lvlTriggerKey))
+        sample_rate = float(instrument.query(ds.srateKey))
+        time_base = float(instrument.query(ds.timeBaseKey))
+        segment_points = float(instrument.query(ds.segmentPKey))
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(f'Resolution (SRATE): {sample_rate} Sa/s\n')
+            f.write(f'Resolution (real): {num_points / (time_base * 10)} Sa/s\n')
+            f.write(f'Points with SRATE: {sample_rate * time_base * 10}\n')
+            f.write(f'Number of points (real): {num_points}\n')
+            f.write(f'Segment Points: {segment_points}\n')
+            f.write(f'Time base scale: {time_base} s\n')
+            f.write(f'Trigger (0.5PE): {trigger} V\n')
+            f.write(f'Execution time: {round((current_time() - start_time) / 60, 2)} min\n')
+        
+        return time_base, str(num_points)
+    
+    else:
+        raise ValueError(f"Unknown scope type: {scope_type}")
 
-        """ Hay que tener en cuenta que los valores coinciden cuando el osciloscopio tiene la barra donde aparece 
-            la onda completa, si por ejemplo la reducimos a la mitad, hay valores que van a seguir devolviendo
-            toda la onda completa y otros la coloreada en blanco"""
 
-    return result
+def write_waveform_file(file_path: Path, timestamp: str, data: list, index: int) -> None:
+    """
+    Write waveform data to a file.
+    
+    Args:
+        file_path: Base path for the file (without index and extension)
+        timestamp: Timestamp string to write as first line
+        data: List of data values to write
+        index: File index number
+    """
+    file_path = Path(file_path)
+    full_path = file_path.parent / f"{file_path.name}_{index}.txt"
+    
+    with open(full_path, 'w', encoding='utf-8') as f:
+        f.write(str(timestamp))
+        f.write('\n')
+        for value in data:
+            f.write(f"{round(value, 5)}\n")
 
-#Func generacion de ficheros (waveform)
-def file_writer_wf(path, tsr, y, i):
-    with open(path+"_"+str(i)+ ".txt", 'w') as f:
-                f.write(str(tsr))
-                f.write('\n')
-                for i in range(len(y)):
-                    f.write(str(round(y[i],5)))
-                    f.write('\n')
 
-#Func current time
-def currentTime():
+def current_time() -> float:
+    """
+    Get current time in seconds since epoch.
+    
+    Returns:
+        Current time as float
+    """
     return time.time()
 
-#Func sleep
-def waiting(device):
+
+def wait_for_operation_complete(device) -> None:
+    """
+    Wait for device operation to complete using *OPC? query.
+    
+    Args:
+        device: PyVISA instrument resource
+    """
     opc = "0"
     while opc.strip() != "1":
         opc = device.query(ds.rdy)
 
-#Func return instr segun dispositivo
-def init_pyvisa(instr):
-    rm = pyvisa.ResourceManager()
-    if instr == "scope1":
-        device = rm.open_resource('TCPIP::192.168.0.32::INSTR')
-    if instr == "scope2":
-        device = rm.open_resource('TCPIP::192.168.1.100::INSTR')
-    if instr == "scope3":
-        device = rm.open_resource('TCPIP::169.254.168.151::INSTR')
-        #device = rm.open_resource('TCPIP0:KEYSIGH-MUTUU36::inst0::INSTR')
-    if instr == "smu":
-        device = rm.open_resource('TCPIP::169.254.216.252::INSTR')
-    if instr == "arbGen":
-        device = rm.open_resource('TCPIP::192.168.0.34::INSTR')
-    if instr == "powerSupply":
-        device = rm.open_resource('TCPIP::192.168.0.35::INSTR')
-    return device
 
-def file_writer_iv(vValues, iValues, path):
-    listAux = np.arange(0 , len(vValues) , 1)
+def initialize_instrument(instrument_type: str):
+    """
+    Initialize a PyVISA instrument connection using configuration.
+    
+    Args:
+        instrument_type: Type of instrument to initialize
+                        (e.g., 'scope1', 'scope2', 'scope3', 'smu', 'arbGen', 'powerSupply')
+        
+    Returns:
+        PyVISA resource object for the instrument
+        
+    Raises:
+        ValueError: If instrument type is not found in configuration
+        pyvisa.Error: If connection to instrument fails
+    """
+    try:
+        resource_manager = pyvisa.ResourceManager()
+        address = get_instrument_address(instrument_type)
+        device = resource_manager.open_resource(address)
+        
+        # Set timeout if specified in config
+        timeout = config.get_instrument_timeout(instrument_type)
+        if timeout is not None:
+            device.timeout = timeout
+        
+        return device
+        
+    except KeyError as e:
+        raise ValueError(f"Instrument '{instrument_type}' not found in configuration: {e}")
+    except pyvisa.Error as e:
+        raise pyvisa.Error(f"Failed to connect to {instrument_type} at {address}: {e}")
 
-    #Escritura fichero
-    with open(path + '.txt', 'a+') as f:
-        for i in listAux:
-            f.write(str(iValues[i]))
-            f.write(' ')
-            f.write(str(vValues[i]))
-            f.write('\n')
 
-    with open(path + '.txt', 'a+') as f:
+def write_iv_data_file(voltage_values: list, current_values: list, file_path: Path) -> None:
+    """
+    Write IV curve data to a file.
+    
+    Args:
+        voltage_values: List of voltage measurements
+        current_values: List of current measurements
+        file_path: Path where to save the file (without extension)
+    """
+    file_path = Path(file_path)
+    output_file = file_path.with_suffix('.txt')
+    
+    indices = np.arange(len(voltage_values))
+    
+    with open(output_file, 'a+', encoding='utf-8') as f:
+        for i in indices:
+            f.write(f"{current_values[i]} {voltage_values[i]}\n")
+    
+    # Append a zero line as delimiter
+    with open(output_file, 'a+', encoding='utf-8') as f:
         f.write('0 0\n')
 
-def chronometter(startTime, t, self=None):
-    while(round(((currentTime() - startTime)/60),2) < t):
+
+def run_chronometer(start_time: float, target_minutes: float, gui_object=None) -> None:
+    """
+    Run a chronometer that prints elapsed time until target is reached.
+    
+    Args:
+        start_time: Start time from time.time()
+        target_minutes: Target duration in minutes
+        gui_object: Optional GUI object to update (with update_idletasks method)
+    """
+    while round((current_time() - start_time) / 60, 2) < target_minutes:
         time.sleep(0.99)
+
+        # Clear console
         os.system('cls' if os.name == 'nt' else 'clear')
-        min, sec = divmod((currentTime() - startTime), 60)
-        #print(round(((currentTime() - startTime)/60),2))
-        print(str(int(min)) + ":" + str(int(sec)))
-        #self.update_idletasks()  # Actualizar la interfaz gráfica
+
+        # Calculate and display elapsed time
+        minutes, seconds = divmod(current_time() - start_time, 60)
+        print(f"{int(minutes)}:{int(seconds)}")
+
+        # Update GUI if provided
+        if gui_object is not None:
+            gui_object.update_idletasks()
