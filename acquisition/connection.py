@@ -95,8 +95,8 @@ def _resolve_address(instrument_id: str, config=None) -> str:
 def open_pyvisa(instrument_id: str, config=None) -> InstrumentConnection:
     """Open a real pyvisa connection and return it as a protocol object.
 
-    Imports pyvisa lazily so that the package can be exercised (and
-    tested) without pyvisa installed.
+    Imports pyvisa lazily so the package can be exercised (and tested)
+    without pyvisa installed.
     """
     try:
         import pyvisa  # type: ignore
@@ -110,3 +110,35 @@ def open_pyvisa(instrument_id: str, config=None) -> InstrumentConnection:
     rm = pyvisa.ResourceManager()
     resource = rm.open_resource(address)
     return _PyvisaAdapter(resource)
+
+
+def identify(instrument_id: str, conn: Optional[InstrumentConnection] = None,
+             config=None) -> str:
+    """Open (or use the provided) connection and return ``*IDN?`` response.
+
+    If ``conn`` is provided, the existing connection is used (and not
+    closed). Otherwise a fresh connection is opened and closed.
+    """
+    if conn is None:
+        conn = open_pyvisa(instrument_id, config)
+        try:
+            return conn.query("*IDN?").strip()
+        finally:
+            conn.close()
+    return conn.query("*IDN?").strip()
+
+
+def connect_and_identify(instrument_id: str, config=None) -> tuple:
+    """Open a connection to ``instrument_id`` and run ``*IDN?``.
+
+    Returns ``(connection, identification_string)``. The caller is
+    responsible for closing the connection (typically by storing the
+    result on a manager and calling ``disconnect`` later).
+
+    For tests, pass a ``FakeConnection`` via ``config['_fake_<id>']`` to
+    avoid the real pyvisa dependency; this helper does not honour that
+    today, but ``DAQGUIFunctions`` does (see tests).
+    """
+    conn = open_pyvisa(instrument_id, config)
+    idn = conn.query("*IDN?").strip()
+    return conn, idn

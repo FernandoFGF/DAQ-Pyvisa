@@ -14,10 +14,11 @@ try:
     """
     import sys
     import customtkinter
-    import gui_functions as func_new
+    import daq_gui_func_refactored as func_new
     import daq_gui_iv as iv
     import daq_gui_spec as spec
     import daq_gui_wf as wf
+    import gui_connect as connect_tab
     import lab_module as lm
     import os
     import numpy as np
@@ -143,18 +144,21 @@ try:
             # Tabview
             self.tabview = customtkinter.CTkTabview(self, width=250)
             self.tabview.grid(row=0, column=0, padx=(20, 20), pady=(10, 10), sticky="nsew")
+            self.tabview.add("Connect")
             self.tabview.add("IV Curves")
             self.tabview.add("Spectrum")
             self.tabview.add("Waveform")
             self.tabview.tab("IV Curves").grid_columnconfigure(0, weight=0)
             self.tabview.tab("IV Curves").grid_columnconfigure(1, weight=3)
-            self.tabview.tab("IV Curves").grid_rowconfigure(0, weight=1)  # 100% de altura
+            self.tabview.tab("IV Curves").grid_rowconfigure(0, weight=1)
             self.tabview.tab("Spectrum").grid_columnconfigure(0, weight=0)
             self.tabview.tab("Spectrum").grid_columnconfigure(1, weight=3)
-            self.tabview.tab("Spectrum").grid_rowconfigure(0, weight=1)  # 100% de altura
+            self.tabview.tab("Spectrum").grid_rowconfigure(0, weight=1)
             self.tabview.tab("Waveform").grid_columnconfigure(0, weight=0)
             self.tabview.tab("Waveform").grid_columnconfigure(1, weight=3)
-            self.tabview.tab("Waveform").grid_rowconfigure(0, weight=1)  # 100% de altura
+            self.tabview.tab("Waveform").grid_rowconfigure(0, weight=1)
+            self.tabview.tab("Connect").grid_columnconfigure(0, weight=1)
+            self.tabview.tab("Connect").grid_rowconfigure(0, weight=1)
 
             # create option frame
             self.option_frame = customtkinter.CTkFrame(self, width=140)
@@ -194,6 +198,8 @@ try:
             # create textbox
             self.textbox = customtkinter.CTkTextbox(self, width=250)
             self.textbox.grid(row=1, column=0, padx=(20, 20), pady=(10, 20), sticky="nsew")
+
+            connect_tab.setting_connect(self)
 
             spec.setting_spec(self)
 
