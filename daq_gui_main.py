@@ -176,15 +176,23 @@ try:
             self.folder_button = customtkinter.CTkButton(self.option_frame)
             self.folder_button.grid(row=3, column=0, padx=10, pady=(10,20))
 
-            # Instrument connection buttons
-            self.connect_button = customtkinter.CTkButton(self.option_frame, text="Connect All Instruments", command=self.connect_instruments)
-            self.connect_button.grid(row=4, column=0, padx=10, pady=(10, 5))
-            self.connect_smu_button = customtkinter.CTkButton(self.option_frame, text="Connect SMU", command=lambda: self.connect_specific_instrument("smu"))
-            self.connect_smu_button.grid(row=5, column=0, padx=10, pady=(5, 2))
-            self.connect_scope_button = customtkinter.CTkButton(self.option_frame, text="Connect Scope", command=lambda: self.connect_specific_instrument("scope1"))
-            self.connect_scope_button.grid(row=6, column=0, padx=10, pady=(2, 5))
-            self.disconnect_button = customtkinter.CTkButton(self.option_frame, text="Disconnect All", command=self.disconnect_instruments)
-            self.disconnect_button.grid(row=7, column=0, padx=10, pady=(5, 10))
+            # Instrument connection buttons — superseded by the Connect tab.
+            # The four buttons (Connect All / Connect SMU / Connect Scope /
+            # Disconnect All) used to live in the right option_frame; the
+            # new Connect tab exposes per-instrument cards with the same
+            # functionality. The methods on App (connect_instruments,
+            # connect_specific_instrument, disconnect_instruments) and on
+            # self.gui_funcs (connect_all_instruments, connect_specific_instrument,
+            # disconnect_all_instruments) are kept in case future code wants
+            # to wire them elsewhere.
+            # self.connect_button = customtkinter.CTkButton(self.option_frame, text="Connect All Instruments", command=self.connect_instruments)
+            # self.connect_button.grid(row=4, column=0, padx=10, pady=(10, 5))
+            # self.connect_smu_button = customtkinter.CTkButton(self.option_frame, text="Connect SMU", command=lambda: self.connect_specific_instrument("smu"))
+            # self.connect_smu_button.grid(row=5, column=0, padx=10, pady=(5, 2))
+            # self.connect_scope_button = customtkinter.CTkButton(self.option_frame, text="Connect Scope", command=lambda: self.connect_specific_instrument("scope1"))
+            # self.connect_scope_button.grid(row=6, column=0, padx=10, pady=(2, 5))
+            # self.disconnect_button = customtkinter.CTkButton(self.option_frame, text="Disconnect All", command=self.disconnect_instruments)
+            # self.disconnect_button.grid(row=7, column=0, padx=10, pady=(5, 10))
 
             # Down options from option frame
             self.appearance_mode_label = customtkinter.CTkLabel(self.option_frame, text="Appearance Mode:", anchor="w")
