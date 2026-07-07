@@ -274,12 +274,11 @@ try:
         
         def update_data(self, data):
             """
-            Update data display.
-            
-            Args:
-                data: Measurement data
+            Update data display. The StdoutRedirector already shows
+            a generic "Data ready!" line in the textbox whenever a
+            payload arrives, so this handler focuses on the typed
+            payload.
             """
-            print("Data ready!")
             if isinstance(data, dict):
                 if 'voltage_array' in data and 'current_array' in data:
                     # IV measurement data
