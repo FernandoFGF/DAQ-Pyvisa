@@ -22,8 +22,6 @@ try:
     from gui.tabs import waveform as wf
     import lab_module as lm
     import os
-    import numpy as np
-    import threading
     from config_loader import get_config
     from acquisition.save import ensure_dir
     from analysis.spectrum_analysis import plot_histogram_with_peaks

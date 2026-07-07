@@ -7,7 +7,6 @@ addresses in config.yaml; they print the progress and exit when
 the measurements finish.
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
@@ -16,7 +15,7 @@ from acquisition.spectrum_acquisition import SpectrumAcquisition
 from acquisition.waveform_acquisition import WaveformAcquisition
 from analysis.iv_analysis import calculate_vbr, calculate_qr, plot_iv
 from analysis.spectrum_analysis import find_histogram_peaks, plot_histogram_with_peaks
-from analysis.waveform_analysis import calculate_dcr, load_waveform_file, plot_waveform
+from analysis.waveform_analysis import load_waveform_file, plot_waveform
 from config_loader import get_config
 
 

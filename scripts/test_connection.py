@@ -11,8 +11,6 @@ Run with: ``python -m scripts.test_connection`` from the
 project root.
 """
 
-from pathlib import Path
-
 
 def test_configuration():
     print("Testing configuration loading...")
