@@ -60,11 +60,15 @@ try:
             """
             Write the string to the text widget.
 
-            Args:
-                string: The string to be written.
+            If the underlying widget has been destroyed (the window is
+            already closing), silently drop the write instead of raising
+            a TclError during teardown.
             """
-            self.text_space.insert('end', string)
-            self.text_space.see('end')
+            try:
+                self.text_space.insert('end', string)
+                self.text_space.see('end')
+            except Exception:
+                pass
 
         def flush(self):
             """
@@ -88,13 +92,17 @@ try:
 
         def write(self, string):
             """
-            Write the error string to the text widget.
+            Write the error string to the text widget. If the widget has
+            been destroyed, silently drop the write.
 
             Args:
                 string: The error string to be written.
             """
-            self.text_space.insert('end', string, 'error')
-            self.text_space.see('end')
+            try:
+                self.text_space.insert('end', string, 'error')
+                self.text_space.see('end')
+            except Exception:
+                pass
 
         def flush(self):
             """
@@ -231,6 +239,8 @@ try:
             self.appearance_mode_optionemenu.set("System")
             self.scaling_optionemenu.set("100%")
             self.options.set("SMU")
+            self._stdout_original = sys.stdout
+            self._stderr_original = sys.stderr
             sys.stdout = StdoutRedirector(self.textbox)
             sys.stderr = StderrRedirector(self.textbox)
 
@@ -537,9 +547,24 @@ try:
         def on_closing(self):
             """
             Handle application closing.
+
+            Order matters: restore the real stdout/stderr *before*
+            running cleanup (which can print) and *before* destroying
+            the widgets, otherwise the redirector would try to write
+            into a textbox that no longer exists and raise TclError
+            (which the user sees as a confusing traceback at exit).
             """
+            # Restore real streams first so any later output (cleanup,
+            # error handlers, garbage collection) goes to the console.
             try:
-                # Cleanup resources
+                if getattr(self, "_stdout_original", None) is not None:
+                    sys.stdout = self._stdout_original
+                if getattr(self, "_stderr_original", None) is not None:
+                    sys.stderr = self._stderr_original
+            except Exception:
+                pass
+
+            try:
                 self.gui_funcs.cleanup()
                 print("Application closed successfully")
             except Exception as e:
