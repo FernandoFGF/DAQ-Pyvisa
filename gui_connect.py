@@ -1,17 +1,24 @@
 """
 Connect tab.
 
-A 2x2 grid of instrument cards: SMU, RTA (scope1), RTO (scope2),
-KEY (scope3). Each card lets the user edit the VISA address, save it
-to ``config.yaml``, and connect to the instrument. On a successful
-connect the response to ``*IDN?`` is displayed on the card.
+A grid of instrument cards. Each card lets the user edit the
+VISA address, save it to ``config.yaml``, and connect to the
+instrument. On a successful connect the response to ``*IDN?`` is
+displayed on the card.
 
-The actual pyvisa work happens in :mod:`acquisition.connection`; this
-file is purely Tk and config-driven.
+The user only types the IP (e.g. ``192.168.0.32``). The
+``TCPIP::`` prefix and ``::INSTR`` suffix are added automatically
+on focus-out and on Return. A full address typed by the user is
+preserved as-is.
+
+Cards rendered, in order: SMU, RTA (scope1), RTO (scope2), KEY
+(scope3), ArbGen, Power Supply. The actual pyvisa work lives in
+:mod:`acquisition.connection`; this file is purely Tk + config.
 """
 
 from __future__ import annotations
 
+import re
 import threading
 import customtkinter as ctk
 
@@ -22,14 +29,44 @@ STATUS_CONNECTING = ("Connecting...", "#e0a800")
 STATUS_CONNECTED = ("Connected", "#2ea043")
 STATUS_ERROR = ("Error", "#d62828")
 
-# Cards rendered in this order. The first entry is the SMU; the other
-# three are oscilloscopes in the order they appear in config.yaml.
 DEFAULT_CARDS = [
     ("smu", "SMU", "Source Measure Unit"),
     ("scope1", "RTA", "Rohde & Schwarz RTA"),
     ("scope2", "RTO", "Rohde & Schwarz RTO"),
     ("scope3", "KEY", "Keysight Oscilloscope"),
+    ("arbGen", "ArbGen", "Arbitrary Waveform Generator"),
+    ("powerSupply", "Power", "Power Supply"),
 ]
+
+_IP_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+
+
+def normalize_address(raw: str, default_prefix: str = "TCPIP",
+                      default_suffix: str = "INSTR") -> str:
+    """Return a fully-qualified VISA address from whatever the user typed.
+
+    Rules:
+      * Empty / whitespace -> empty string.
+      * Already contains ``::`` -> returned unchanged (preserves the
+        user's explicit choice of bus / protocol / suffix).
+      * Looks like a bare IPv4 (e.g. ``192.168.0.32``) -> wrapped as
+        ``TCPIP::<ip>::INSTR``.
+      * Anything else (e.g. ``USB0::...``, ``GPIB0::1::INSTR``) is
+        returned unchanged.
+
+    Pure function, no Tk dependency, used by both the entry widget
+    and the unit tests.
+    """
+    if raw is None:
+        return ""
+    text = raw.strip()
+    if not text:
+        return ""
+    if "::" in text:
+        return text
+    if _IP_RE.match(text):
+        return f"{default_prefix}::{text}::{default_suffix}"
+    return text
 
 
 def _build_card(parent: ctk.CTkFrame, self, instrument_id: str, name: str,
@@ -49,16 +86,29 @@ def _build_card(parent: ctk.CTkFrame, self, instrument_id: str, name: str,
     addr_frame.grid(row=2, column=0, padx=15, pady=(4, 4), sticky="ew")
     addr_frame.grid_columnconfigure(1, weight=1)
 
-    addr_label = ctk.CTkLabel(addr_frame, text="Address:", width=70, anchor="w")
+    addr_label = ctk.CTkLabel(addr_frame, text="IP:", width=70, anchor="w")
     addr_label.grid(row=0, column=0, padx=(0, 6))
 
-    addr_entry = ctk.CTkEntry(addr_frame, placeholder_text="TCPIP::x.x.x.x::INSTR")
+    addr_entry = ctk.CTkEntry(addr_frame, placeholder_text="e.g. 192.168.0.32")
     addr_entry.grid(row=0, column=1, padx=(0, 6), sticky="ew")
 
     save_btn = ctk.CTkButton(addr_frame, text="Save", width=64,
                               command=lambda: _save_address(self, instrument_id,
                                                             addr_entry.get()))
     save_btn.grid(row=0, column=2)
+
+    # When the user leaves the entry or presses Enter, rewrite the
+    # contents as a fully-qualified VISA address.
+    def _finalize(_event=None):
+        normalized = normalize_address(addr_entry.get())
+        if normalized and normalized != addr_entry.get():
+            # Only rewrite if it actually changed, to avoid clobbering
+            # the cursor position while the user is typing.
+            addr_entry.delete(0, "end")
+            addr_entry.insert(0, normalized)
+
+    addr_entry.bind("<FocusOut>", _finalize)
+    addr_entry.bind("<Return>", _finalize)
 
     idn_label = ctk.CTkLabel(card, text="", font=("", 11), anchor="w",
                               text_color="#bbb", wraplength=320, justify="left")
@@ -106,7 +156,7 @@ def _build_card(parent: ctk.CTkFrame, self, instrument_id: str, name: str,
         "connect_btn": connect_btn,
         "disconnect_btn": disconnect_btn,
         "status_label": status_label,
-        "connection": None,  # the live InstrumentConnection, if any
+        "connection": None,
     }
 
 
@@ -115,7 +165,7 @@ def _set_status(widgets: dict, label: str, color: str) -> None:
 
 
 def _save_address(self, instrument_id: str, new_address: str) -> None:
-    new_address = (new_address or "").strip()
+    new_address = normalize_address(new_address)
     if not new_address:
         print(f"[{instrument_id}] Address cannot be empty.")
         return
@@ -142,9 +192,6 @@ def _do_connect(self, instrument_id: str, idn_label, connect_btn,
         from acquisition.connection import open_pyvisa
         conn = None
         try:
-            # Tolerate a missing instrument: a placeholder address still
-            # lets us render a "no address configured" error in the UI
-            # instead of crashing the worker thread.
             conn = open_pyvisa(instrument_id, self.config.config)
             idn = conn.query("*IDN?").strip()
             widgets = self.connect_cards[instrument_id]
@@ -197,12 +244,13 @@ def setting_connect(self) -> None:
     """Build the Connect tab with one card per supported instrument."""
     container = ctk.CTkFrame(self.tabview.tab("Connect"))
     container.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
-    container.grid_columnconfigure((0, 1), weight=1, uniform="card")
+    # 3 columns x 2 rows for 6 cards.
+    container.grid_columnconfigure((0, 1, 2), weight=1, uniform="card")
     container.grid_rowconfigure((0, 1), weight=1, uniform="card")
 
     self.connect_cards = {}
     for index, (instrument_id, name, description) in enumerate(DEFAULT_CARDS):
-        row, col = divmod(index, 2)
+        row, col = divmod(index, 3)
         widgets = _build_card(container, self, instrument_id, name, description)
         widgets["card"].grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
         self.connect_cards[instrument_id] = widgets

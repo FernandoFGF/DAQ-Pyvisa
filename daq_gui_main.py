@@ -19,6 +19,7 @@ try:
     import daq_gui_spec as spec
     import daq_gui_wf as wf
     import gui_connect as connect_tab
+    import gui_arbgen as arbgen_tab
     import lab_module as lm
     import os
     import numpy as np
@@ -200,6 +201,8 @@ try:
             self.textbox.grid(row=1, column=0, padx=(20, 20), pady=(10, 20), sticky="nsew")
 
             connect_tab.setting_connect(self)
+
+            arbgen_tab.setting_arbgen(self)
 
             spec.setting_spec(self)
 

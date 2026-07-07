@@ -104,5 +104,49 @@ class IdentifyTests(unittest.TestCase):
         open_mock.assert_called_once()
 
 
+class NormalizeAddressTests(unittest.TestCase):
+    """Tests for gui_connect.normalize_address (pure function)."""
+
+    def test_empty_inputs(self):
+        from gui_connect import normalize_address
+        self.assertEqual(normalize_address(""), "")
+        self.assertEqual(normalize_address(None), "")
+        self.assertEqual(normalize_address("   "), "")
+
+    def test_bare_ipv4_is_wrapped(self):
+        from gui_connect import normalize_address
+        self.assertEqual(normalize_address("192.168.0.32"),
+                         "TCPIP::192.168.0.32::INSTR")
+        self.assertEqual(normalize_address("169.254.168.151"),
+                         "TCPIP::169.254.168.151::INSTR")
+        self.assertEqual(normalize_address("  10.0.0.1  "),
+                         "TCPIP::10.0.0.1::INSTR")
+
+    def test_full_address_preserved(self):
+        from gui_connect import normalize_address
+        self.assertEqual(normalize_address("TCPIP::1.2.3.4::INSTR"),
+                         "TCPIP::1.2.3.4::INSTR")
+        self.assertEqual(normalize_address("USB0::0x1234::0x5678::INSTR"),
+                         "USB0::0x1234::0x5678::INSTR")
+        self.assertEqual(normalize_address("GPIB0::1::INSTR"),
+                         "GPIB0::1::INSTR")
+
+    def test_unknown_format_passes_through(self):
+        """If the user typed something that doesn't look like an IPv4
+        and doesn't contain '::', we don't touch it. Better to save
+        whatever they meant than to corrupt it."""
+        from gui_connect import normalize_address
+        self.assertEqual(normalize_address("ASRL1::INSTR"), "ASRL1::INSTR")
+        # Even odd input is passed through unchanged.
+        self.assertEqual(normalize_address("not-a-known-bus"), "not-a-known-bus")
+
+    def test_custom_prefix_and_suffix(self):
+        from gui_connect import normalize_address
+        self.assertEqual(normalize_address("192.168.0.32",
+                                          default_prefix="USB",
+                                          default_suffix="MYDEV"),
+                         "USB::192.168.0.32::MYDEV")
+
+
 if __name__ == "__main__":
     unittest.main()
