@@ -16,10 +16,7 @@ import zipfile
 import winsound
 from datetime import date
 import time
-import pyvisa
-import numpy as np
-import dictionary_SCPI as ds
-from config_loader import get_config, get_instrument_address, get_output_path
+from config_loader import get_config, get_output_path
 
 
 # Configuration instance
@@ -162,81 +159,6 @@ def print_progress(current: int, total: int) -> None:
     print(f"{percentage}%")
 
 
-def create_data_file(
-    file_path: Path,
-    instrument,
-    start_time: float,
-    num_points: int,
-    scope_type: str
-) -> tuple:
-    """
-    Create a data file with measurement metadata.
-    
-    Args:
-        file_path: Path where to save the data file
-        instrument: PyVISA instrument resource
-        start_time: Start time of measurement (from time.time())
-        num_points: Number of data points acquired
-        scope_type: Type of oscilloscope ('1', '2', or '3')
-        
-    Returns:
-        Tuple of (time_base, num_points_str)
-    """
-    file_path = Path(file_path)
-    
-    # Query instrument parameters based on scope type
-    if scope_type == '1':
-        trigger = float(instrument.query(ds.lvlTrigger))
-        acquisition_rate = float(instrument.query(ds.arate))
-        sample_rate = float(instrument.query(ds.srate))
-        time_base = float(instrument.query(ds.timeBase))
-        
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(f'Resolution (real): {sample_rate} ! {acquisition_rate} Sa/s\n')
-            f.write(f'Number of points (real): {num_points}\n')
-            f.write(f'Time base scale: {time_base} s\n')
-            f.write(f'Trigger (0.5PE): {trigger} V\n')
-            f.write(f'Execution time: {round((current_time() - start_time) / 60, 2)} min\n')
-        
-        return time_base, str(num_points)
-    
-    elif scope_type == '2':
-        trigger = float(instrument.query('TRIG:LEVel1?'))
-        acquisition_rate = float(instrument.query(ds.arate))
-        sample_rate = float(instrument.query(ds.srate))
-        time_base = float(instrument.query(ds.timeBase))
-        
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(f'Resolution (real): {sample_rate} ! {acquisition_rate} Sa/s\n')
-            f.write(f'Number of points (real): {num_points}\n')
-            f.write(f'Time base scale: {time_base} s\n')
-            f.write(f'Trigger (0.5PE): {trigger} V\n')
-            f.write(f'Execution time: {round((current_time() - start_time) / 60, 2)} min\n')
-        
-        return time_base, str(num_points)
-    
-    elif scope_type == '3':
-        trigger = float(instrument.query(ds.lvlTriggerKey))
-        sample_rate = float(instrument.query(ds.srateKey))
-        time_base = float(instrument.query(ds.timeBaseKey))
-        segment_points = float(instrument.query(ds.segmentPKey))
-        
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(f'Resolution (SRATE): {sample_rate} Sa/s\n')
-            f.write(f'Resolution (real): {num_points / (time_base * 10)} Sa/s\n')
-            f.write(f'Points with SRATE: {sample_rate * time_base * 10}\n')
-            f.write(f'Number of points (real): {num_points}\n')
-            f.write(f'Segment Points: {segment_points}\n')
-            f.write(f'Time base scale: {time_base} s\n')
-            f.write(f'Trigger (0.5PE): {trigger} V\n')
-            f.write(f'Execution time: {round((current_time() - start_time) / 60, 2)} min\n')
-        
-        return time_base, str(num_points)
-    
-    else:
-        raise ValueError(f"Unknown scope type: {scope_type}")
-
-
 def write_waveform_file(file_path: Path, timestamp: str, data: list, index: int) -> None:
     """
     Write waveform data to a file.
@@ -265,18 +187,6 @@ def current_time() -> float:
         Current time as float
     """
     return time.time()
-
-
-def wait_for_operation_complete(device) -> None:
-    """
-    Wait for device operation to complete using *OPC? query.
-    
-    Args:
-        device: PyVISA instrument resource
-    """
-    opc = "0"
-    while opc.strip() != "1":
-        opc = device.query(ds.rdy)
 
 
 def initialize_instrument(instrument_type: str):
