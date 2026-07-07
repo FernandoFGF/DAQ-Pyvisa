@@ -1,8 +1,22 @@
 """
 Module for the SiPMs UGR DAQ spectrum functionality.
+
+The "Finder peaks" button delegates to ``analysis.spectrum_analysis``.
+The DAQ Start button is wired in ``daq_gui_main.py`` to
+``DAQGUIFunctions.start_spectrum_full``.
 """
 import customtkinter as ctk
-import daq_gui_func as func
+
+
+def _do_finding_peaks(self):
+    from analysis.spectrum_analysis import parse_hist_data
+    raw = self.hist_data.get()
+    data = parse_hist_data(raw)
+    if data.size == 0:
+        print("Primero debes de recoger datos que analizar.")
+        return
+    self.gui_funcs.plot_histogram_with_peaks(self.ax, data)
+
 
 def setting_spec(self):
     """
@@ -89,5 +103,5 @@ def setting_spec(self):
     self.analysisSpec.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
     # Crear el botón de fitting
-    self.peaks_button = ctk.CTkButton(self.analysisSpec, text="Finder peaks",command=lambda: func.finding_peaks(self),width=120)
+    self.peaks_button = ctk.CTkButton(self.analysisSpec, text="Finder peaks",command=lambda: _do_finding_peaks(self),width=120)
     self.peaks_button.grid(row=0, column=0, padx=(10), pady=(20,5))

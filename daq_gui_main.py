@@ -14,12 +14,17 @@ try:
     """
     import sys
     import customtkinter
-    import daq_gui_func as func
+    import daq_gui_func_refactored as func_new
     import daq_gui_iv as iv
     import daq_gui_spec as spec
     import daq_gui_wf as wf
     import lab_module as lm
+    import os
+    import numpy as np
     import threading
+    from config_loader import get_config
+    from acquisition.save import ensure_dir
+    from analysis.spectrum_analysis import plot_histogram_with_peaks
 
     #Selector apariencia
     customtkinter.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
@@ -115,6 +120,15 @@ try:
             self.hist_data = customtkinter.StringVar()
             self.path_wf = customtkinter.StringVar()
             self.num_points = customtkinter.StringVar()
+            
+            # Initialize new architecture components
+            self.gui_funcs = func_new.DAQGUIFunctions()
+            self.config = get_config()
+            
+            # Add GUI callbacks for the new architecture
+            self.gui_funcs.add_gui_callback('progress', self.update_progress)
+            self.gui_funcs.add_gui_callback('data_ready', self.update_data)
+            self.gui_funcs.add_gui_callback('error', self.show_error)
 
             # Title and geometry
             self.title("SiPMs UGR DAQ")
@@ -157,15 +171,25 @@ try:
             self.folder_button = customtkinter.CTkButton(self.option_frame)
             self.folder_button.grid(row=3, column=0, padx=10, pady=(10,20))
 
+            # Instrument connection buttons
+            self.connect_button = customtkinter.CTkButton(self.option_frame, text="Connect All Instruments", command=self.connect_instruments)
+            self.connect_button.grid(row=4, column=0, padx=10, pady=(10, 5))
+            self.connect_smu_button = customtkinter.CTkButton(self.option_frame, text="Connect SMU", command=lambda: self.connect_specific_instrument("smu"))
+            self.connect_smu_button.grid(row=5, column=0, padx=10, pady=(5, 2))
+            self.connect_scope_button = customtkinter.CTkButton(self.option_frame, text="Connect Scope", command=lambda: self.connect_specific_instrument("scope1"))
+            self.connect_scope_button.grid(row=6, column=0, padx=10, pady=(2, 5))
+            self.disconnect_button = customtkinter.CTkButton(self.option_frame, text="Disconnect All", command=self.disconnect_instruments)
+            self.disconnect_button.grid(row=7, column=0, padx=10, pady=(5, 10))
+
             # Down options from option frame
             self.appearance_mode_label = customtkinter.CTkLabel(self.option_frame, text="Appearance Mode:", anchor="w")
-            self.appearance_mode_label.grid(row=5, column=0, padx=10, pady=(0, 0))
+            self.appearance_mode_label.grid(row=8, column=0, padx=10, pady=(0, 0))
             self.appearance_mode_optionemenu = customtkinter.CTkOptionMenu(self.option_frame, values=["Light", "Dark", "System"], command=self.change_appearance)
-            self.appearance_mode_optionemenu.grid(row=6, column=0, padx=10, pady=(0, 5))
+            self.appearance_mode_optionemenu.grid(row=9, column=0, padx=10, pady=(0, 5))
             self.scaling_label = customtkinter.CTkLabel(self.option_frame, text="UI Scaling:", anchor="w")
-            self.scaling_label.grid(row=7, column=0, padx=10, pady=(5, 0))
+            self.scaling_label.grid(row=10, column=0, padx=10, pady=(5, 0))
             self.scaling_optionemenu = customtkinter.CTkOptionMenu(self.option_frame, values=["80%", "90%", "100%", "110%", "120%"], command=self.change_scaling_event)
-            self.scaling_optionemenu.grid(row=8, column=0, padx=10, pady=(0, 100))
+            self.scaling_optionemenu.grid(row=11, column=0, padx=10, pady=(0, 100))
 
             # create textbox
             self.textbox = customtkinter.CTkTextbox(self, width=250)
@@ -173,15 +197,15 @@ try:
 
             spec.setting_spec(self)
 
-            func.plot_example_spec(self)
+            plot_example_spec(self)
 
             wf.setting_wf(self)
 
-            func.plot_example_wf(self)
+            plot_example_wf(self)
 
             iv.setting_iv(self)
 
-            func.plot_example_iv(self)
+            plot_example_iv(self)
 
             # set default values
             self.save_button.configure(text="Save results", command=self.save_results)
@@ -211,69 +235,223 @@ try:
             """
             new_scaling_float = int(new_scaling.replace("%", "")) / 100
             customtkinter.set_widget_scaling(new_scaling_float)
+        
+        def update_progress(self, progress: float):
+            """
+            Update progress display.
+            
+            Args:
+                progress: Progress percentage (0-100)
+            """
+            print(f"Progress: {progress:.1f}%")
+        
+        def update_data(self, data):
+            """
+            Update data display.
+            
+            Args:
+                data: Measurement data
+            """
+            print("Data ready!")
+            if isinstance(data, dict):
+                if 'voltage_array' in data and 'current_array' in data:
+                    # IV measurement data
+                    self.v_values_aux.set(', '.join(map(str, data['voltage_array'])))
+                    self.i_values_aux.set(', '.join(map(str, data['current_array'])))
+                elif 'message' in data:
+                    print(data['message'])
+        
+        def show_error(self, error_message: str):
+            """
+            Show error message.
+            
+            Args:
+                error_message: Error message to display
+            """
+            print(f"Error: {error_message}")
+        
+        def connect_instruments(self):
+            """
+            Connect to all configured instruments.
+            """
+            try:
+                self.gui_funcs.connect_all_instruments()
+                print("All instruments connected successfully")
+            except Exception as e:
+                print(f"Failed to connect instruments: {e}")
+        
+        def connect_specific_instrument(self, instrument_id: str):
+            """
+            Connect to a specific instrument.
+            
+            Args:
+                instrument_id: ID of the instrument to connect
+            """
+            try:
+                success = self.gui_funcs.connect_specific_instrument(instrument_id)
+                if success:
+                    print(f"Successfully connected to {instrument_id}")
+                else:
+                    print(f"Failed to connect to {instrument_id}")
+            except Exception as e:
+                print(f"Error connecting to {instrument_id}: {e}")
+        
+        def disconnect_instruments(self):
+            """
+            Disconnect from all instruments.
+            """
+            try:
+                self.gui_funcs.disconnect_all_instruments()
+                print("All instruments disconnected")
+            except Exception as e:
+                print(f"Failed to disconnect instruments: {e}")
 
         def start_iv(self):
             """
-            Start the IV curve measurement.
+            Start the IV curve measurement using the new architecture.
             """
             try:
-                func.start_iv(self)
-                print("IV curve finished")
-                v_values=self.v_values_aux.get()
-                i_values=self.i_values_aux.get()
-                # Dividir la cadena en elementos individuales
-                v_values = v_values.split(', ')
-                i_values = i_values.split(', ')
-                # Convertir los elementos en floats y crear la lista resultante
-                #print(i_values)
-                v_values = [float(x) for x in v_values]
-                i_values = [float(x) for x in i_values]
-                #print(v_values)
-                # Obtener la figura y el lienzo
+                v_start = float(self.vStart.get()) if self.vStart.get() else 1.0
+                v_stop = float(self.vStop.get()) if self.vStop.get() else -40.0
+                v_step = float(self.vStep.get()) if self.vStep.get() else 0.05
+                option = self.options.get()
+            except ValueError:
+                print("Error: Los valores ingresados deben ser números válidos.")
+                self.start_button.configure(state="normal")
+                return
+
+            self.start_button.configure(state="disabled")
+
+            def _on_results(payload):
+                v = payload['voltage']
+                i = payload['current']
+                self.v_values_aux.set(', '.join(f"{x:.6g}" for x in v))
+                self.i_values_aux.set(', '.join(f"{x:.6g}" for x in i))
+
                 fig = self.canvas.figure
-
-                # Dibujar el punto rojo en el lienzo
                 self.canvas.draw()
-                a_x = fig.gca()
-                a_x.cla()
-                # Agregar etiquetas de ejes
-                a_x.set_xlabel('Voltios')
-                a_x.set_ylabel('Amperios')
-                a_x.plot(v_values, i_values)
-
-                # Actualizar la figura
+                ax = fig.gca()
+                ax.cla()
+                ax.set_xlabel('Voltios')
+                ax.set_ylabel('Amperios')
+                ax.plot(v, i)
                 fig.canvas.draw()
+                print("IV curve finished")
 
-            except Exception as e_error:
-                print("Error:", e_error)
-            finally:
-                # Habilitar el botón Start nuevamente al finalizar
+            def _on_error(msg):
+                print("Error:", msg)
+
+            def _on_finish():
                 lm.beep()
                 self.start_button.configure(state="normal")
 
+            def _on_complete():
+                # Called from a worker thread; hop back to the Tk main loop
+                # so widget state updates are safe.
+                self.after(0, _on_finish)
+
+            def _wrapped_results(payload):
+                self.after(0, lambda p=payload: (_on_results(p), _on_complete()))
+
+            self.gui_funcs.start_iv_full(
+                v_start=v_start,
+                v_stop=v_stop,
+                v_step=v_step,
+                option=option,
+                results_callback=_wrapped_results,
+                error_callback=lambda m: self.after(0, lambda: _on_error(m)),
+            )
+
         def save_results(self):
             """
-            Save the measurement results.
+            Save the measurement results to the active tab's folder.
             """
-            func.save_results(self)
+            name = self.save_entry.get()
+            path = str(lm.get_path(self.tabview.get())) + "/"
+            if not name:
+                print("Introduzca un nombre antes de guardar.")
+                return
+            ensure_dir(path)
+            tab = self.tabview.get()
+            if tab == "IV Curves":
+                self.gui_funcs.save_iv_results_to(name, path)
+            elif tab == "Spectrum":
+                self.gui_funcs.save_spectrum_results_to(name, path)
+            elif tab == "Waveform":
+                print("Esta funcion se guarda automaticamente")
 
         def open_results(self):
             """
-            Open the folder containing the results.
+            Open the folder containing the results in the system file explorer.
             """
-            func.open_results(self)
+            path = str(lm.get_path(self.tabview.get()))
+            try:
+                path = path.replace("/", "\\")
+                if not os.path.isdir(path):
+                    raise Exception("La ruta especificada no existe o no es una carpeta.")
+                os.system(f'explorer "{path}"')
+            except Exception as e_error:
+                print("Error al abrir la carpeta:", e_error)
 
         def save_plot_as_png(self):
             """
-            Save the plot as a PNG image.
+            Save the active matplotlib figure as a PNG image.
             """
-            func.save_plot_as_png(self)
+            name = self.save_entry.get()
+            if not name:
+                print("Introduzca un nombre antes de guardar.")
+                return
+            path = str(lm.get_path(self.tabview.get())) + "/"
+            ensure_dir(path)
+            self.gui_funcs.save_plot_as_png(self.canvas.figure, name, path)
 
         def start_spectrum(self):
             """
-            Start the spectrum measurement.
+            Start the spectrum measurement using the new architecture.
             """
-            func.thread_spectrum(self)
+            num_datos_raw = self.entries.get()
+            if not num_datos_raw:
+                print("Introduce un valor para entries primero.")
+                return
+            num_datos = int(num_datos_raw)
+            scope = self.selected_scopeSpec.get()
+            channel = self.selected_channelSpec.get()
+
+            def _on_results(payload):
+                data = payload['data']
+                self.values_aux.set(" ".join(f"{x:.6g}" for x in data))
+                # Update hist_data for the Analysis tab (Finder peaks button).
+                self.hist_data.set("(" + ", ".join(f"{x:.6g}" for x in data) + ")")
+                # Redraw the live histogram with the final data.
+                plot_histogram_with_peaks(self.ax, data)
+                self.canvas.draw()
+                self.update_idletasks()
+                print("Finish histogram.")
+
+            def _on_progress(arr):
+                # Live update every progress callback (~every 100 samples).
+                self.ax.clear()
+                self.ax.hist(arr, bins=50)
+                self.canvas.draw()
+                self.update_idletasks()
+
+            def _on_error(msg):
+                print("Error:", msg)
+
+            self.startSpec_button.configure(state="disabled")
+
+            def _reenable():
+                lm.beep()
+                self.startSpec_button.configure(state="normal")
+
+            self.gui_funcs.start_spectrum_full(
+                num_datos=num_datos,
+                scope=scope,
+                channel=channel,
+                results_callback=lambda p: self.after(0, lambda: (_on_results(p), _reenable())),
+                progress_callback=lambda arr: self.after(0, lambda a=arr: _on_progress(a)),
+                error_callback=lambda m: self.after(0, lambda: (_on_error(m), _reenable())),
+            )
 
         def stop_spectrum(self):
 
@@ -286,12 +464,111 @@ try:
 
         def start_wf(self):
             """
-            Start the waveform measurement.
+            Start the waveform measurement using the new architecture.
             """
-            func.thread_wf(self)
+            time_seconds_raw = self.timeWf.get()
+            time_seconds = float(time_seconds_raw) if time_seconds_raw else 0.0
+            name = self.save_entry.get()
+            if not name:
+                print("Introduce un nombre al fichero")
+                return
+            scope = self.selected_scopeWf.get()
+            channel = self.selected_channelWf.get()
+            save_root = str(lm.get_path("Waveform"))
+
+            def _on_results(payload):
+                # Update GUI state with the captured waveform.
+                self.path_wf.set(payload['path_d'])
+                self.num_points.set(str(payload['num_points']))
+
+                y_data = payload['y_data']
+                x_data = payload['x_data']
+
+                from matplotlib.figure import Figure
+                from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+                fig = Figure(figsize=(6, 4), dpi=100)
+                self.ax = fig.add_subplot(111)
+                self.ax.clear()
+                self.canvas = FigureCanvasTkAgg(fig, self.plot_wf)
+                self.canvas.get_tk_widget().grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+                self.ax.plot(x_data, y_data)
+                self.ax.set_xlabel('Time(S)')
+                self.ax.set_ylabel('Voltaje(V)')
+                fig.canvas.draw()
+
+                count, _ = self.gui_funcs.count_waveform_files(payload['path_d'], name)
+                self.slider_wf.configure(to=max(count - 1, 0),
+                                         number_of_steps=max(count - 1, 0))
+                print("Finish waveform.")
+
+            def _on_error(msg):
+                print("Error:", msg)
+
+            def _on_finish():
+                lm.beep()
+
+            self.gui_funcs.start_waveform_full(
+                scope=scope,
+                channel=channel,
+                time_seconds=time_seconds,
+                name=name,
+                save_root=save_root,
+                results_callback=lambda p: self.after(0, lambda: (_on_results(p), _on_finish())),
+                error_callback=lambda m: self.after(0, lambda: (_on_error(m), _on_finish())),
+            )
+        
+        def on_closing(self):
+            """
+            Handle application closing.
+            """
+            try:
+                # Cleanup resources
+                self.gui_funcs.cleanup()
+                print("Application closed successfully")
+            except Exception as e:
+                print(f"Error during cleanup: {e}")
+            finally:
+                self.destroy()
+
+
+    # --- Module-level helpers (extracted from daq_gui_func.plot_example_*) ---
+
+    def plot_example_spec(self):
+        from matplotlib.figure import Figure
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        fig = Figure(figsize=(6, 4), dpi=100)
+        a_x = fig.add_subplot(111)
+        a_x.set_xlabel("Charge(Vs)")
+        a_x.hist([1, 2, 3, 4, 5])
+        self.canvas = FigureCanvasTkAgg(fig, self.liveplot)
+        self.canvas.draw()
+        self.canvas.get_tk_widget().grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+
+    def plot_example_wf(self):
+        from matplotlib.figure import Figure
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        fig = Figure(figsize=(6, 4), dpi=100)
+        a_x = fig.add_subplot(111)
+        a_x.plot([1, 2, 3, 4, 5], [10, 10, 50, 40, 10])
+        self.canvas = FigureCanvasTkAgg(fig, self.plot_wf)
+        self.canvas.draw()
+        self.canvas.get_tk_widget().grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+
+    def plot_example_iv(self):
+        from matplotlib.figure import Figure
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        fig = Figure(figsize=(6, 4), dpi=100)
+        a_x = fig.add_subplot(111)
+        a_x.set_xlabel('Voltios')
+        a_x.set_ylabel('Amperios')
+        a_x.plot([1, 2, 3, 4, 5], [2, 4, 6, 8, 10])
+        self.canvas = FigureCanvasTkAgg(fig, self.plotIV)
+        self.canvas.draw()
+        self.canvas.get_tk_widget().grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
 
 
     app = App()
+    app.protocol("WM_DELETE_WINDOW", app.on_closing)
     app.mainloop()
 
 except Exception as e:
