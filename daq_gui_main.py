@@ -14,12 +14,12 @@ try:
     """
     import sys
     import customtkinter
-    import gui_functions as func_new
-    import daq_gui_iv as iv
-    import daq_gui_spec as spec
-    import daq_gui_wf as wf
-    import gui_connect as connect_tab
-    import gui_arbgen as arbgen_tab
+    from gui.facade import DAQGUIFunctions
+    from gui.tabs import connect as connect_tab
+    from gui.tabs import arbgen as arbgen_tab
+    from gui.tabs import iv as iv
+    from gui.tabs import spectrum as spec
+    from gui.tabs import waveform as wf
     import lab_module as lm
     import os
     import numpy as np
@@ -132,7 +132,7 @@ try:
             self.num_points = customtkinter.StringVar()
             
             # Initialize new architecture components
-            self.gui_funcs = func_new.DAQGUIFunctions()
+            self.gui_funcs = DAQGUIFunctions()
             self.config = get_config()
             
             # Add GUI callbacks for the new architecture
