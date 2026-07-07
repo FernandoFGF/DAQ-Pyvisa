@@ -86,12 +86,18 @@ def _build_card(parent: ctk.CTkFrame, self, instrument_id: str, name: str,
                                  font=("", 11), anchor="w", text_color=STATUS_DISCONNECTED[1])
     status_label.grid(row=5, column=0, padx=15, pady=(0, 10), sticky="ew")
 
-    # Initial population of the address from config.
+    # Initial population of the address from config. Be tolerant: if the
+    # instrument is missing from the YAML (e.g. a fresh checkout with a
+    # partial config), the card still renders with an empty address field
+    # instead of crashing the whole app.
     try:
         current = self.config.get_instrument_address(instrument_id)
+    except KeyError:
+        current = ""
     except Exception:
         current = ""
-    addr_entry.insert(0, current)
+    if current:
+        addr_entry.insert(0, current)
 
     return {
         "card": card,
@@ -115,6 +121,9 @@ def _save_address(self, instrument_id: str, new_address: str) -> None:
         return
     try:
         self.config.set_instrument_address(instrument_id, new_address)
+    except KeyError:
+        print(f"[{instrument_id}] Not in config.yaml; cannot save.")
+        return
     except Exception as e:
         print(f"[{instrument_id}] Failed to save address: {e}")
         return
@@ -133,6 +142,9 @@ def _do_connect(self, instrument_id: str, idn_label, connect_btn,
         from acquisition.connection import open_pyvisa
         conn = None
         try:
+            # Tolerate a missing instrument: a placeholder address still
+            # lets us render a "no address configured" error in the UI
+            # instead of crashing the worker thread.
             conn = open_pyvisa(instrument_id, self.config.config)
             idn = conn.query("*IDN?").strip()
             widgets = self.connect_cards[instrument_id]

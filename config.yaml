@@ -1,0 +1,108 @@
+# DAQ-Pyvisa Configuration File
+# ================================
+
+# Instrument Addresses
+instruments:
+  # Oscilloscopes
+  scope1:
+    name: "RTA"
+    address: "TCPIP::192.168.0.32::INSTR"
+    timeout: 20000
+
+  scope2:
+    name: "RTO"
+    address: "TCPIP::192.168.0.1::INSTR"
+    timeout: 20000
+
+  scope3:
+    name: "KEY"
+    address: "TCPIP::169.254.168.151::INSTR"
+    # Alternative: "TCPIP0:KEYSIGH-MUTUU36::inst0::INSTR"
+    timeout: 20000
+
+  # Source Measure Unit
+  smu:
+    name: "SMU"
+    address: "TCPIP::169.254.216.252::INSTR"
+    timeout: null  # No timeout limit
+
+  # Arbitrary Waveform Generator
+  arbGen:
+    name: "Arbitrary Generator"
+    address: "TCPIP::192.168.0.34::INSTR"
+    timeout: 20000
+
+  # Power Supply
+  powerSupply:
+    name: "Power Supply"
+    address: "TCPIP::192.168.0.35::INSTR"
+    timeout: 20000
+
+# Output Paths Configuration
+paths:
+  # Base output directory (relative to project root)
+  output_base: "Output"
+
+  # Subdirectories for different measurement types
+  iv_curves: "IV Curves"
+  spectrum: "Spectrum"
+  waveform: "Waveform"
+
+# Measurement Constants
+constants:
+  # Histogram settings
+  histogram_bins: 50
+  histogram_update_interval: 100  # Update plot every N measurements
+
+  # Peak finding
+  peak_prominence: 80
+
+  # IV Curve defaults
+  iv_default_start: 1.0     # Volts
+  iv_default_stop: -40.0    # Volts
+  iv_default_step: 0.05     # Volts
+
+  # Current thresholds
+  current_min_threshold: -1e-7  # Minimum current value
+
+  # Voltage thresholds for analysis
+  vbr_voltage_threshold: -0.01  # Volts - threshold for Vbr calculation
+  qr_voltage_threshold: 0.75    # Volts - threshold for Qr calculation
+
+  # Plot settings
+  plot_width: 6    # inches
+  plot_height: 4   # inches
+  plot_dpi: 100
+
+# GUI Settings
+gui:
+  window_width: 1200
+  window_height: 700
+  default_appearance: "System"  # Options: "Light", "Dark", "System"
+  default_scaling: 100  # Percentage
+
+# Audio feedback
+audio:
+  enable_beep: true
+  beep_frequency_start: 650  # Hz
+  beep_duration: 500  # milliseconds
+  beep_count: 3
+
+# Logging
+logging:
+  enable: true
+  level: "ERROR"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: "error.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Threading
+threading:
+  enable_threading: true
+  thread_timeout: 300  # seconds
+
+# File formats
+file_formats:
+  data_extension: ".txt"
+  plot_extension: ".png"
+  archive_extension: ".zip"
+  encoding: "utf-8"
