@@ -295,13 +295,16 @@ try:
             customtkinter.set_widget_scaling(new_scaling_float)
         
         def update_progress(self, progress: float):
+            """Generic progress callback registered with the facade.
+
+            Per-measurement code (``start_spectrum._on_progress``,
+            ``start_wf._on_progress``) is responsible for the
+            per-segment formatted line; this method is a quiet
+            hook so the facade's ``_notify_gui("progress", pct)``
+            has somewhere to land. Logging here would duplicate
+            the per-measurement output.
             """
-            Update progress display.
-            
-            Args:
-                progress: Progress percentage (0-100)
-            """
-            print(f"Progress: {progress:.1f}%")
+            return None
         
         def update_data(self, data):
             """
