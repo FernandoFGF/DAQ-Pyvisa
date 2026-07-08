@@ -1,0 +1,71 @@
+{
+  "spectrum": {
+    "rta": [
+      "Spectrum - RTA (R&S RTA4000 series)",
+      "1. Press 'Connect' on the RTA card in the Connect tab.",
+      "2. Open the Spectrum tab and set 'Set entries' to the number of samples.",
+      "3. Pick the channel (Ch1..Ch4).",
+      "4. Press Start. The adapter issues CURSor1:SOURce + *OPC? + CURSor1:Y1Position? / Y2Position? per sample.",
+      "5. The live histogram redraws every 100 samples.",
+      "6. Open the Analysis tab and press 'Finder peaks' to overlay the peaks and read the list of peak positions."
+    ],
+    "rto": [
+      "Spectrum - RTO (R&S RTO2000 series)",
+      "1. Press 'Connect' on the RTO card in the Connect tab.",
+      "2. Open the Spectrum tab and set 'Set entries'.",
+      "3. Pick the channel (Ch1..Ch4).",
+      "4. Press Start. The adapter issues CURSor1:SOURce + MEAS1:RES:ACT? per sample.",
+      "5. The live histogram redraws every 100 samples.",
+      "6. Open the Analysis tab and press 'Finder peaks' to overlay the peaks and read the list of peak positions."
+    ],
+    "keysight": [
+      "Spectrum - Keysight",
+      "1. Press 'Connect' on the Keysight card in the Connect tab.",
+      "2. Open the Spectrum tab and set 'Set entries'.",
+      "3. Pick the channel (Ch1..Ch4).",
+      "4. Press Start. The adapter issues :SYSTem:HEADer OFF + :MEASure:STATistics CURRENT + :MEASure1:RESults? per sample.",
+      "5. The live histogram redraws every 100 samples.",
+      "6. Open the Analysis tab and press 'Finder peaks' to overlay the peaks and read the list of peak positions."
+    ]
+  },
+  "waveform": {
+    "rta": [
+      "Waveform - RTA (R&S RTA4000 series)",
+      "1. Press 'Connect' on the RTA card in the Connect tab.",
+      "2. Open the Waveform tab. Optionally set 'Set time to acquire' (in seconds; 0 = immediate).",
+      "3. Pick the channel (Ch1..Ch4).",
+      "4. Type a file name in the right option_frame. If empty, a default-YYYY-MM-DD-HH-MM-SS name is used.",
+      "5. Press Start. The adapter walks the history buffer: FORM ASCii + FORM:BORD LSBF + CHAN:HIST:CURR + CHAN:DATA? + CHAN:HIST:TSR?.",
+      "6. The terminal prints [Waveform] progress: i/n segments (pct%) while running.",
+      "7. Press Stop to cooperatively cancel; the current segment finishes, then the worker exits.",
+      "8. The Analysis tab shows Calculate Dcr (rate of captures), a slider to step through each segment waveform, and +/- buttons."
+    ],
+    "rto": [
+      "Waveform - RTO (R&S RTO2000 series)",
+      "1. Press 'Connect' on the RTO card in the Connect tab.",
+      "2. Open the Waveform tab. Optionally set 'Set time to acquire' (in seconds; 0 = immediate).",
+      "3. Pick the channel (Ch1..Ch4).",
+      "4. Type a file name in the right option_frame. If empty, a default-YYYY-MM-DD-HH-MM-SS name is used.",
+      "5. Press Start. The adapter enables the history buffer (CHAN2:HIST:STAT ON) then walks it: FORM ASCii + FORM:BORD LSBF + CHAN:HIST:CURR + CHAN:DATA? + CHAN:HIST:TSR?.",
+      "6. The terminal prints [Waveform] progress: i/n segments (pct%) while running.",
+      "7. Press Stop to cooperatively cancel; the current segment finishes, then the worker exits.",
+      "8. The Analysis tab shows Calculate Dcr, a slider to step through each segment waveform, and +/- buttons."
+    ],
+    "keysight": [
+      "Waveform - Keysight",
+      "1. Press 'Connect' on the Keysight card in the Connect tab.",
+      "2. Open the Waveform tab. Optionally set 'Set time to acquire' (in seconds; 0 = immediate).",
+      "3. Pick the channel (Ch1..Ch4).",
+      "4. Type a file name in the right option_frame. If empty, a default-YYYY-MM-DD-HH-MM-SS name is used.",
+      "5. Press Start. The adapter queries :ACQuire:SEGMented:COUNT? and iterates :ACQuire:SEGMented:INDex + :WAVeform:DATA? + :WAVeform:SEGMented:TTAG?.",
+      "6. The terminal prints [Waveform] progress: i/n segments (pct%) while running.",
+      "7. Press Stop to cooperatively cancel; the current segment finishes, then the worker exits.",
+      "8. The Analysis tab shows Calculate Dcr, a slider to step through each segment waveform, and +/- buttons."
+    ]
+  },
+  "iv": {
+    "rta": ["none"],
+    "rto": ["none"],
+    "keysight": ["none"]
+  }
+}
