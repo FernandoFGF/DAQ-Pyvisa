@@ -137,7 +137,7 @@ class SettingArbgenSmokeTest(unittest.TestCase):
     exist on ``self``. Catches regressions where a control
     is renamed or removed."""
 
-    def test_setting_arbgen_creates_controls(self):
+    def test_setting_arbgen_creates_per_channel_panels(self):
         try:
             root = ctk.CTk()
         except Exception as e:
@@ -146,27 +146,28 @@ class SettingArbgenSmokeTest(unittest.TestCase):
         stub = _build_stub(root)
         try:
             arbgen_tab.setting_arbgen(stub)
-            for attr in (
-                "arbgen_channel",
-                "arbgen_waveform",
-                "arbgen_freq",
-                "arbgen_amp",
-                "arbgen_offset",
-                "arbgen_phase",
-                "arbgen_impedance",
-                "arbgen_output",
-                "arbgen_update_button",
-            ):
-                self.assertTrue(hasattr(stub, attr),
-                                f"setting_arbgen did not set {attr!r}")
-            # On/Off switch defaults to OFF.
-            self.assertEqual(stub.arbgen_output.get(), "OFF")
-            # Channel defaults to CH1.
-            self.assertEqual(stub.arbgen_channel.get(), "CH1")
-            # Impedance defaults to HiZ.
-            self.assertEqual(stub.arbgen_impedance.get(), "HiZ")
-            # Wave type defaults to Sine.
-            self.assertEqual(stub.arbgen_waveform.get(), "Sine")
+            # No more global channel selector.
+            self.assertFalse(hasattr(stub, "arbgen_channel"),
+                             "arbgen_channel should be gone")
+            self.assertFalse(hasattr(stub, "arbgen_waveform"),
+                             "arbgen_waveform should be per-channel")
+            # The new shape: a dict keyed by channel.
+            self.assertTrue(hasattr(stub, "arbgen_panels"))
+            self.assertEqual(set(stub.arbgen_panels.keys()),
+                             {"CH1", "CH2"})
+            for ch in ("CH1", "CH2"):
+                panel = stub.arbgen_panels[ch]
+                for attr in ("waveform", "freq", "amp", "offset",
+                             "phase", "impedance", "output",
+                             "update_button"):
+                    self.assertIn(attr, panel,
+                                  f"CH{ch} panel missing {attr!r}")
+                # On/Off defaults to OFF.
+                self.assertEqual(panel["output"].get(), "OFF")
+                # Impedance defaults to HiZ.
+                self.assertEqual(panel["impedance"].get(), "HiZ")
+                # Wave type defaults to Sine.
+                self.assertEqual(panel["waveform"].get(), "Sine")
         finally:
             root.destroy()
 
@@ -174,8 +175,7 @@ class SettingArbgenSmokeTest(unittest.TestCase):
 class ArbgenActionHandlersTests(unittest.TestCase):
     """The GUI-side ``arbgen_update`` and ``arbgen_toggle_output``
     are the only entry points from the buttons. They must
-    print a structured line and delegate to the adapter.
-    """
+    print a structured line and delegate to the adapter."""
 
     def setUp(self) -> None:
         try:
@@ -189,21 +189,19 @@ class ArbgenActionHandlersTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.root.destroy()
 
-    def test_arbgen_update_prints_summary(self):
-        # Inject user-typed values into the entries. Without
-        # this the CTkEntry widgets are empty and the summary
-        # would only contain the channel and wave type.
-        self.stub.arbgen_freq.insert(0, "1000")
-        self.stub.arbgen_amp.insert(0, "1.0")
-        self.stub.arbgen_offset.insert(0, "0.0")
-        self.stub.arbgen_phase.insert(0, "0")
-        # The GUI imports the adapter functions at module
-        # load time, so we patch them in gui.tabs.arbgen where
-        # they are now bound.
+    def _fill(self, ch: str) -> None:
+        panel = self.stub.arbgen_panels[ch]
+        panel["freq"].insert(0, "1000")
+        panel["amp"].insert(0, "1.0")
+        panel["offset"].insert(0, "0.0")
+        panel["phase"].insert(0, "0")
+
+    def test_arbgen_update_ch1_prints_summary(self):
+        self._fill("CH1")
         with patch("gui.tabs.arbgen.apply_arbgen_params") as mock_apply:
             buf = io.StringIO()
             with redirect_stdout(buf):
-                arbgen_tab.arbgen_update(self.stub)
+                arbgen_tab.arbgen_update(self.stub, "CH1")
             mock_apply.assert_called_once()
         out = buf.getvalue()
         self.assertIn("[ArbGen] Update", out)
@@ -211,16 +209,33 @@ class ArbgenActionHandlersTests(unittest.TestCase):
         self.assertIn("SINE", out)
         self.assertIn("1000", out)
 
-    def test_arbgen_toggle_output_prints_state(self):
+    def test_arbgen_update_ch2_isolated_from_ch1(self):
+        # Edit CH1 only; pressing CH2's Update should still
+        # show CH1's empty values.
+        self._fill("CH1")
+        with patch("gui.tabs.arbgen.apply_arbgen_params") as mock_apply:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                arbgen_tab.arbgen_update(self.stub, "CH2")
+            mock_apply.assert_called_once()
+        out = buf.getvalue()
+        # CH2's freq entry was never typed into, so the
+        # summary should not contain "1000" for the CH2 call.
+        self.assertIn("CH2", out)
+        # Each panel's call prints its own channel; the CH1
+        # values (1000) should not appear in this output.
+        self.assertNotIn("freq=1000Hz", out)
+
+    def test_arbgen_toggle_output_per_channel(self):
         with patch("gui.tabs.arbgen.set_arbgen_output") as mock_set:
             buf = io.StringIO()
             with redirect_stdout(buf):
-                arbgen_tab.arbgen_toggle_output(self.stub, "ON")
-                arbgen_tab.arbgen_toggle_output(self.stub, "OFF")
+                arbgen_tab.arbgen_toggle_output(self.stub, "CH1", "ON")
+                arbgen_tab.arbgen_toggle_output(self.stub, "CH2", "OFF")
             self.assertEqual(mock_set.call_count, 2)
         out = buf.getvalue()
-        self.assertIn("Output ON", out)
-        self.assertIn("Output OFF", out)
+        self.assertIn("Output ON on CH1", out)
+        self.assertIn("Output OFF on CH2", out)
 
 
 if __name__ == "__main__":
