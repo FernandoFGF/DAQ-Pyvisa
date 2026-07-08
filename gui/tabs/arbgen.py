@@ -273,9 +273,29 @@ def arbgen_update(self, channel: str) -> None:
           f"phase={params['phase_deg']}deg "
           f"width={params['width_s']}s")
     try:
-        apply_arbgen_params(params, config=self.config.config)
+        apply_arbgen_params(params, config=self.config.config,
+                            conn=_arbgen_live_conn(self))
     except Exception as e:
         print(f"[ArbGen] apply_arbgen_params failed: {e}")
+
+
+def _arbgen_live_conn(app):
+    """Return the live pyvisa connection to the AWG, or None.
+
+    The Connect tab keeps an open ``InstrumentConnection`` in
+    ``app.connect_cards["arbGen"]["connection"]`` once the
+    user has clicked Connect. We reuse that handle so the
+    per-channel switches talk to the same session the command
+    line uses. Returns ``None`` if the AWG is not connected,
+    in which case the adapter just prints the SCPI line.
+    """
+    cards = getattr(app, "connect_cards", None)
+    if not cards:
+        return None
+    widgets = cards.get("arbGen")
+    if not isinstance(widgets, dict):
+        return None
+    return widgets.get("connection")
 
 
 def arbgen_toggle_output(self, channel: str, value: str = None) -> None:
@@ -285,7 +305,8 @@ def arbgen_toggle_output(self, channel: str, value: str = None) -> None:
     print(f"[ArbGen] Output {state} on {channel}")
     try:
         set_arbgen_output(channel=channel, on=(state == "ON"),
-                          config=self.config.config)
+                          config=self.config.config,
+                          conn=_arbgen_live_conn(self))
     except Exception as e:
         print(f"[ArbGen] set_arbgen_output failed: {e}")
 
@@ -295,7 +316,8 @@ def arbgen_change_load(self, channel: str, value: str) -> None:
     print(f"[ArbGen] Load {value} on {channel}")
     try:
         set_arbgen_load(channel=channel, impedance=value,
-                         config=self.config.config)
+                         config=self.config.config,
+                         conn=_arbgen_live_conn(self))
     except Exception as e:
         print(f"[ArbGen] set_arbgen_load failed: {e}")
 
@@ -313,7 +335,8 @@ def arbgen_change_width(self, channel: str) -> None:
     print(f"[ArbGen] Pulse width {width:.3E}s on {channel}")
     try:
         set_arbgen_pulse_width(channel=channel, width_s=width,
-                                config=self.config.config)
+                                config=self.config.config,
+                                conn=_arbgen_live_conn(self))
     except Exception as e:
         print(f"[ArbGen] set_arbgen_pulse_width failed: {e}")
 

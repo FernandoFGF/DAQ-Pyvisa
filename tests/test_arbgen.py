@@ -162,6 +162,10 @@ def _build_stub(root):
     # before the (mocked) adapter call lands. The mocked
     # adapter does not actually touch config.config.
     stub.config = type("Cfg", (), {"config": None})()
+    # No live AWG connection by default; the GUI just prints
+    # the SCPI line. Tests that need a live conn set this
+    # attribute explicitly.
+    stub.connect_cards = {}
     return stub
 
 
@@ -269,6 +273,51 @@ class ArbgenActionHandlersTests(unittest.TestCase):
         out = buf.getvalue()
         self.assertIn("Output ON on CH1", out)
         self.assertIn("Output OFF on CH2", out)
+
+    def test_arbgen_toggle_uses_live_connection_from_connect_cards(self):
+        """The GUI on/off switch must hand the adapter the
+        live pyvisa connection that the Connect tab opened
+        in self.connect_cards['arbGen']['connection']. The
+        previous code opened no connection, so the SCPI
+        line was only printed, never sent to the scope."""
+        from tests.fake_connection import FakeConnection
+        live = FakeConnection()
+        self.stub.connect_cards["arbGen"] = {
+            "connection": live, "idn": "...",
+        }
+        with patch("gui.tabs.arbgen.set_arbgen_output") as mock_set:
+            arbgen_tab.arbgen_toggle_output(self.stub, "CH1", "ON")
+            mock_set.assert_called_once()
+        # The live connection was passed in as the ``conn``
+        # keyword argument; the adapter would have called
+        # .write on it to issue the SCPI command.
+        kwargs = mock_set.call_args.kwargs
+        self.assertIs(kwargs["conn"], live)
+
+    def test_arbgen_update_uses_live_connection_from_connect_cards(self):
+        from tests.fake_connection import FakeConnection
+        live = FakeConnection()
+        self.stub.connect_cards["arbGen"] = {
+            "connection": live, "idn": "...",
+        }
+        self.stub.arbgen_panels["CH1"]["freq"].insert(0, "1000")
+        with patch("gui.tabs.arbgen.apply_arbgen_params") as mock_apply:
+            arbgen_tab.arbgen_update(self.stub, "CH1")
+            mock_apply.assert_called_once()
+        kwargs = mock_apply.call_args.kwargs
+        self.assertIs(kwargs["conn"], live)
+
+    def test_arbgen_handles_missing_connect_cards(self):
+        """If the AWG was never connected, the GUI still works
+        and just prints the SCPI line (no exception)."""
+        self.stub.connect_cards = {}
+        with patch("gui.tabs.arbgen.set_arbgen_output") as mock_set:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                arbgen_tab.arbgen_toggle_output(self.stub, "CH1", "ON")
+            mock_set.assert_called_once()
+        # The adapter was called with conn=None.
+        self.assertIsNone(mock_set.call_args.kwargs["conn"])
 
     def test_arbgen_change_load_delegates_to_adapter(self):
         with patch("gui.tabs.arbgen.set_arbgen_load") as mock_set:
