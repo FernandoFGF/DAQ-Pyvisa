@@ -77,16 +77,26 @@ class DAQGUIFunctions:
         threading.Thread(target=_run, daemon=True).start()
 
     def start_spectrum_full(self, num_datos: int, scope: str, channel: str,
+                            instrument_id: Optional[str] = None,
                             results_callback: Optional[Callable[[dict], None]] = None,
                             progress_callback: Optional[Callable[[Any], None]] = None,
                             error_callback: Optional[Callable[[str], None]] = None) -> None:
-        """Run a spectrum (charge histogram) acquisition in a thread."""
+        """Run a spectrum (charge histogram) acquisition in a thread.
+
+        ``scope`` is the SCPI dialect id (``"1"``=RTA, ``"2"``=RTO,
+        ``"3"``=KEY). ``instrument_id`` is the actual VISA resource
+        id (``"scope1"``/``"scope2"``/``"scope3"``); when omitted the
+        adapter falls back to ``f"scope{scope}"`` for backwards
+        compatibility with the legacy hard-coded mapping.
+        """
         from acquisition.spectrum_acquisition import SpectrumAcquisition
 
         if self.threads_active["spectrum"]:
             msg = "Spectrum measurement already in progress"
             self._dispatch_error(msg, error_callback)
             return
+
+        actual_instrument_id = instrument_id or f"scope{scope}"
 
         def _on_progress(arr) -> None:
             if progress_callback:
@@ -96,6 +106,7 @@ class DAQGUIFunctions:
         def _run():
             try:
                 acq = SpectrumAcquisition(scope_id=scope, channel=channel,
+                                          instrument_id=actual_instrument_id,
                                           num_datos=num_datos,
                                           config=self.config.config)
                 result = acq.run(progress_callback=_on_progress)
@@ -117,9 +128,16 @@ class DAQGUIFunctions:
 
     def start_waveform_full(self, scope: str, channel: str, time_seconds: float,
                             name: str, save_root: str,
+                            instrument_id: Optional[str] = None,
                             results_callback: Optional[Callable[[dict], None]] = None,
                             error_callback: Optional[Callable[[str], None]] = None) -> None:
-        """Run a waveform acquisition in a thread."""
+        """Run a waveform acquisition in a thread.
+
+        ``scope`` is the SCPI dialect id (``"1"``/``"2"``/``"3"``).
+        ``instrument_id`` is the actual VISA resource id
+        (``"scope1"``/``"scope2"``/``"scope3"``); falls back to
+        ``f"scope{scope}"`` when omitted.
+        """
         from acquisition.waveform_acquisition import WaveformAcquisition
 
         if self.threads_active["waveform"]:
@@ -127,9 +145,12 @@ class DAQGUIFunctions:
             self._dispatch_error(msg, error_callback)
             return
 
+        actual_instrument_id = instrument_id or f"scope{scope}"
+
         def _run():
             try:
                 acq = WaveformAcquisition(scope_id=scope, channel=channel,
+                                          instrument_id=actual_instrument_id,
                                           time_seconds=time_seconds,
                                           save_root=save_root, name=name,
                                           config=self.config.config)

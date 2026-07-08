@@ -1,0 +1,25 @@
+# DAQ-Pyvisa Dependencies
+# ========================
+
+# Core scientific libraries
+numpy>=1.24.0
+scipy>=1.10.0
+matplotlib>=3.7.0
+
+# Instrument communication
+pyvisa>=1.13.0
+pyvisa-py>=0.7.0
+RsInstrument>=1.50.0
+
+# GUI Framework
+customtkinter>=5.2.0
+
+# Configuration management
+python-dotenv>=1.0.0
+PyYAML>=6.0
+
+# Remote access (if needed)
+paramiko>=3.0.0
+
+# Optional: For better error handling and logging
+colorlog>=6.7.0

@@ -57,13 +57,19 @@ class WaveformResult:
 class WaveformAcquisition:
     def __init__(self, scope_id: str = SCOPE_RTA, channel: str = "1",
                  time_seconds: float = 0.0, save_root: str = ".",
-                 name: str = "waveform", config=None) -> None:
+                 name: str = "waveform", config=None,
+                 instrument_id: Optional[str] = None) -> None:
         self.scope_id = str(scope_id)
         self.channel = str(channel)
         self.time_seconds = float(time_seconds)
         self.save_root = save_root
         self.name = name
         self.config = config
+        # ``instrument_id`` is the actual VISA resource id
+        # (e.g. ``"scope1"``). When provided, ``open()`` uses it
+        # verbatim; otherwise it falls back to the legacy
+        # ``f"scope{scope_id}"`` mapping for backwards compatibility.
+        self.instrument_id = instrument_id
         self._conn: Optional[InstrumentConnection] = None
 
     def set_connection(self, conn: InstrumentConnection) -> None:
@@ -71,7 +77,8 @@ class WaveformAcquisition:
 
     def open(self) -> None:
         if self._conn is None:
-            self._conn = open_pyvisa(f"scope{self.scope_id}", self.config)
+            target = self.instrument_id or f"scope{self.scope_id}"
+            self._conn = open_pyvisa(target, self.config)
 
     def close(self) -> None:
         if self._conn is not None:

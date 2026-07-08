@@ -1,9 +1,18 @@
 """
-Module for the SiPMs UGR DAQ waveform functionality.
+Module for the SiPMs UGR waveform functionality.
 
 DAQ Start is wired in ``daq_gui_main.py`` to
 ``DAQGUIFunctions.start_waveform_full``. The Analysis tab (DCR + slider
 + - buttons) delegates to ``analysis.waveform_analysis``.
+
+Scope selection is no longer a manual radio button group. The
+Waveform tab reads the currently-connected oscilloscope from
+``self.connect_cards`` via :func:`App.get_active_scope` and shows a
+read-only label with its name. The acquisition adapter (in
+``acquisition/waveform_acquisition.py``) picks the SCPI dialect
+from the legacy scope id (``1``/``2``/``3``); we pass both that
+id and the real instrument id through
+``DAQGUIFunctions.start_waveform_full``.
 """
 import customtkinter as ctk
 import os
@@ -68,6 +77,22 @@ def _increase_slider_value(self):
         _load_and_plot_waveform(self, new)
 
 
+def _refresh_scope_label(self) -> None:
+    """Update the read-only 'Scope' label from connect_cards."""
+    info = self.get_active_scope()
+    if info is None:
+        self.scopeWf_label.configure(
+            text="(no scope connected)", text_color="#a0a0a0"
+        )
+        self.start_buttonWf.configure(state="disabled")
+    else:
+        _dialect, _iid, name = info
+        self.scopeWf_label.configure(
+            text=f"● {name}", text_color="#2ea043"
+        )
+        self.start_buttonWf.configure(state="normal")
+
+
 def setting_wf(self):
     """
     Configure the settings for the Waveform tab in the SiPMs UGR DAQ application.
@@ -95,22 +120,16 @@ def setting_wf(self):
     self.timeWf.grid(row=1, column=0, padx=10, pady=(0,0), columnspan=2)
 
     self.selected_channelWf = ctk.StringVar(value="1")
-    self.selected_scopeWf = ctk.StringVar(value="1")
 
-    self.scopes_frame_wf = ctk.CTkFrame(self.optionsWf)
-    self.scopes_frame_wf.grid(row=2, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
-
-    self.scope1Wf = ctk.CTkRadioButton(self.scopes_frame_wf, text="RTA", variable=self.selected_scopeWf, value="1")
-    self.scope1Wf.grid(row=0, column=0, padx=(10, 5), pady=(10, 5))
-
-    self.scope2Wf = ctk.CTkRadioButton(self.scopes_frame_wf, text="RTO", variable=self.selected_scopeWf, value="2")
-    self.scope2Wf.grid(row=0, column=1, padx=(5, 10), pady=(10, 5))
-
-    self.scope3Wf = ctk.CTkRadioButton(self.scopes_frame_wf, text="KEY", variable=self.selected_scopeWf, value="3")
-    self.scope3Wf.grid(row=1, column=0, padx=(10, 5), pady=(5, 10))
-
-    self.scope_emptywf = ctk.CTkLabel(self.scopes_frame_wf, text="")
-    self.scope_emptywf.grid(row=1, column=1, padx=(5, 10), pady=(5, 10))
+    # Scope: a single read-only label that mirrors the connected
+    # oscilloscope. No more RTA/RTO/KEY radio buttons.
+    self.scopeWf_label_title = ctk.CTkLabel(self.optionsWf, text="Scope:", anchor="w")
+    self.scopeWf_label_title.grid(row=2, column=0, padx=10, pady=(10, 0), sticky="w")
+    self.scopeWf_label = ctk.CTkLabel(
+        self.optionsWf, text="(no scope connected)", anchor="w",
+        text_color="#a0a0a0",
+    )
+    self.scopeWf_label.grid(row=2, column=1, padx=10, pady=(10, 0), sticky="w")
 
     self.channels_frame_wf = ctk.CTkFrame(self.optionsWf)
     self.channels_frame_wf.grid(row=3, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
@@ -127,7 +146,7 @@ def setting_wf(self):
     self.ch4Wf = ctk.CTkRadioButton(self.channels_frame_wf, text="Ch4", variable=self.selected_channelWf, value="4")
     self.ch4Wf.grid(row=1, column=1, padx=(5, 10), pady=(5, 10))
 
-    self.start_buttonWf = ctk.CTkButton(self.optionsWf, text="Start", command=self.start_wf)
+    self.start_buttonWf = ctk.CTkButton(self.optionsWf, text="Start", command=self.start_wf, state="disabled")
     self.start_buttonWf.grid(row=10, column=0, padx=20, pady=(20,50), columnspan=2, sticky="s")
 
     self.plot_wf = ctk.CTkFrame(self.tabview.tab("Waveform"))
@@ -157,3 +176,5 @@ def setting_wf(self):
     self.increase_button = ctk.CTkButton(self.analysisWf, text="+", width=5,
                                          command=lambda: _increase_slider_value(self))
     self.increase_button.grid(row=3, column=1, padx=10, pady=10, sticky="nsew")
+
+    _refresh_scope_label(self)

@@ -208,7 +208,24 @@ try:
             self.scaling_label = customtkinter.CTkLabel(self.option_frame, text="UI Scaling:", anchor="w")
             self.scaling_label.grid(row=10, column=0, padx=10, pady=(5, 0))
             self.scaling_optionemenu = customtkinter.CTkOptionMenu(self.option_frame, values=["80%", "90%", "100%", "110%", "120%"], command=self.change_scaling_event)
-            self.scaling_optionemenu.grid(row=11, column=0, padx=10, pady=(0, 100))
+            self.scaling_optionemenu.grid(row=11, column=0, padx=10, pady=(0, 10))
+
+            # Connected instruments (informational). Small, low-emphasis
+            # list that mirrors self.connect_cards. Updated by
+            # _refresh_connected_list() whenever a card connects or
+            # disconnects in the Connect tab.
+            self.connected_label = customtkinter.CTkLabel(
+                self.option_frame, text="Connected:", anchor="w",
+                text_color="#888",
+            )
+            self.connected_label.grid(row=12, column=0, padx=10, pady=(8, 2), sticky="w")
+
+            self.connected_list = customtkinter.CTkTextbox(
+                self.option_frame, width=140, height=120, activate_scrollbars=True,
+            )
+            self.connected_list.grid(row=13, column=0, padx=10, pady=(0, 16), sticky="ew")
+            self.connected_list.configure(state="disabled")
+            self._refresh_connected_list()
 
             # create textbox
             self.textbox = customtkinter.CTkTextbox(self, width=250)
@@ -222,9 +239,24 @@ try:
 
             plot_example_spec(self)
 
+            # Bind the scope-label refresher so Connect can call it
+            # whenever a card connects / disconnects.
+            self._refresh_scope_label_spec = (
+                lambda: spec._refresh_scope_label(self)
+            )
+
             wf.setting_wf(self)
 
             plot_example_wf(self)
+
+            self._refresh_scope_label_wf = (
+                lambda: wf._refresh_scope_label(self)
+            )
+
+            # Initial population from whatever was already connected
+            # (none on a fresh boot, but be safe).
+            self._refresh_scope_label_spec()
+            self._refresh_scope_label_wf()
 
             iv.setting_iv(self)
 
@@ -284,7 +316,76 @@ try:
                     self.i_values_aux.set(', '.join(map(str, data['current_array'])))
                 elif 'message' in data:
                     print(data['message'])
-        
+
+        def _refresh_connected_list(self) -> None:
+            """Repaint the small 'Connected' panel in the right option frame.
+
+            Reads ``self.connect_cards`` (populated by the Connect tab)
+            and lists the model field of every instrument with a live
+            connection (parsed from its *IDN? response). Falls back to
+            the static name when no *IDN? has been captured yet.
+            No-op if the panel hasn't been built yet.
+            """
+            widget = getattr(self, "connected_list", None)
+            if widget is None:
+                return
+            names = []
+            cards = getattr(self, "connect_cards", {}) or {}
+            try:
+                from gui.tabs.connect import DEFAULT_CARDS, parse_idn_model
+                ordered_ids = [iid for iid, _, _ in DEFAULT_CARDS]
+            except Exception:
+                ordered_ids = list(cards.keys())
+                parse_idn_model = lambda s: ""  # noqa: E731
+            for iid in ordered_ids:
+                card = cards.get(iid)
+                if not card or card.get("connection") is None:
+                    continue
+                model = parse_idn_model(card.get("idn", ""))
+                display = model if model else card.get("name", iid)
+                names.append(f"● {display}")
+
+            text = "\n".join(names) if names else "(none)"
+            try:
+                widget.configure(state="normal")
+                widget.delete("1.0", "end")
+                widget.insert("end", text)
+                widget.configure(state="disabled")
+            except Exception:
+                pass
+
+        def get_active_scope(self):
+            """Return the connected oscilloscope in ``(dialect, instrument_id,
+            friendly_name)`` form, or ``None`` if no scope is connected.
+
+            ``dialect`` is the SCPI variant id used by the
+            acquisition adapters (``"1"``=RTA, ``"2"``=RTO,
+            ``"3"``=KEY). ``instrument_id`` is the id used to open
+            the VISA session (``"scope1"``/``"scope2"``/``"scope3"``).
+            ``friendly_name`` is the short name shown on the Connect
+            card (RTA / RTO / KEY). Useful for the Spectrum and
+            Waveform tabs which used to expose manual scope-selector
+            radio buttons.
+            """
+            try:
+                from gui.tabs.connect import card_info
+            except Exception:
+                return None
+            cards = getattr(self, "connect_cards", {}) or {}
+            for instrument_id, widgets in cards.items():
+                if not isinstance(widgets, dict):
+                    continue
+                if widgets.get("connection") is None:
+                    continue
+                info = card_info(instrument_id)
+                if info is None:
+                    continue
+                _, name, _desc, dialect = info
+                if dialect is None:
+                    continue
+                return (dialect, instrument_id, name)
+            return None
+
         def show_error(self, error_message: str):
             """
             Show error message.
@@ -438,7 +539,12 @@ try:
                 print("Introduce un valor para entries primero.")
                 return
             num_datos = int(num_datos_raw)
-            scope = self.selected_scopeSpec.get()
+            active = self.get_active_scope()
+            if active is None:
+                print("Connect an oscilloscope in the Connect tab first.")
+                return
+            scope, _instrument_id_friendly = active[0], active[1]
+            instrument_id = active[1]
             channel = self.selected_channelSpec.get()
 
             def _on_results(payload):
@@ -472,6 +578,7 @@ try:
                 num_datos=num_datos,
                 scope=scope,
                 channel=channel,
+                instrument_id=instrument_id,
                 results_callback=lambda p: self.after(0, lambda: (_on_results(p), _reenable())),
                 progress_callback=lambda arr: self.after(0, lambda a=arr: _on_progress(a)),
                 error_callback=lambda m: self.after(0, lambda: (_on_error(m), _reenable())),
@@ -496,7 +603,11 @@ try:
             if not name:
                 print("Introduce un nombre al fichero")
                 return
-            scope = self.selected_scopeWf.get()
+            active = self.get_active_scope()
+            if active is None:
+                print("Connect an oscilloscope in the Connect tab first.")
+                return
+            scope, instrument_id, _name = active
             channel = self.selected_channelWf.get()
             save_root = str(lm.get_path("Waveform"))
 
@@ -537,6 +648,7 @@ try:
                 time_seconds=time_seconds,
                 name=name,
                 save_root=save_root,
+                instrument_id=instrument_id,
                 results_callback=lambda p: self.after(0, lambda: (_on_results(p), _on_finish())),
                 error_callback=lambda m: self.after(0, lambda: (_on_error(m), _on_finish())),
             )
@@ -545,14 +657,21 @@ try:
             """
             Handle application closing.
 
-            Order matters: restore the real stdout/stderr *before*
-            running cleanup (which can print) and *before* destroying
-            the widgets, otherwise the redirector would try to write
-            into a textbox that no longer exists and raise TclError
-            (which the user sees as a confusing traceback at exit).
+            Order matters:
+              1. Restore real stdout/stderr so later output goes to
+                 the console (and so the redirector doesn't try to
+                 write into a destroyed textbox).
+              2. Close every instrument connection opened in the
+                 Connect tab. pyvisa's ``ResourceManager`` runs an
+                 ``atexit`` hook that iterates over its open sessions
+                 and tries to RPC-close them; if we leave VXI-11
+                 sockets open they hang on a blocking ``select`` and
+                 trigger the ``KeyboardInterrupt``-looking traceback
+                 the user has been seeing at shutdown.
+              3. Run the rest of the cleanup (stop measurements).
+              4. Destroy the Tk widgets.
             """
-            # Restore real streams first so any later output (cleanup,
-            # error handlers, garbage collection) goes to the console.
+            # Restore real streams first.
             try:
                 if getattr(self, "_stdout_original", None) is not None:
                     sys.stdout = self._stdout_original
@@ -560,6 +679,20 @@ try:
                     sys.stderr = self._stderr_original
             except Exception:
                 pass
+
+            # Close every connection that the Connect tab opened.
+            cards = getattr(self, "connect_cards", {}) or {}
+            for instrument_id, widgets in cards.items():
+                conn = widgets.get("connection") if isinstance(widgets, dict) else None
+                if conn is None:
+                    continue
+                try:
+                    conn.close()
+                except Exception as e:
+                    print(f"[{instrument_id}] Error closing connection: {e}")
+                finally:
+                    if isinstance(widgets, dict):
+                        widgets["connection"] = None
 
             try:
                 self.gui_funcs.cleanup()

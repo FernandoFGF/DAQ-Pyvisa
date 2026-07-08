@@ -1,8 +1,17 @@
 """
-Module for the SiPMs UGR DAQ spectrum functionality.
+Module for the SiPMs UGR spectrum functionality.
 
 The "Finder peaks" button delegates to ``analysis.spectrum_analysis``.
 The DAQ Start button is wired in ``daq_gui_main.py`` to
+``DAQGUIFunctions.start_spectrum_full``.
+
+Scope selection is no longer a manual radio button group. The
+Spectrum tab reads the currently-connected oscilloscope from
+``self.connect_cards`` via :func:`App.get_active_scope` and shows a
+read-only label with its name. The acquisition adapter (in
+``acquisition/spectrum_acquisition.py``) knows the SCPI dialect
+from the legacy scope id (``1``/``2``/``3``); we pass both that
+id and the real instrument id through
 ``DAQGUIFunctions.start_spectrum_full``.
 """
 import customtkinter as ctk
@@ -16,6 +25,22 @@ def _do_finding_peaks(self):
         print("Primero debes de recoger datos que analizar.")
         return
     self.gui_funcs.plot_histogram_with_peaks(self.ax, data)
+
+
+def _refresh_scope_label(self) -> None:
+    """Update the read-only 'Scope' label from connect_cards."""
+    info = self.get_active_scope()
+    if info is None:
+        self.scopeSpec_label.configure(
+            text="(no scope connected)", text_color="#a0a0a0"
+        )
+        self.startSpec_button.configure(state="disabled")
+    else:
+        _dialect, _iid, name = info
+        self.scopeSpec_label.configure(
+            text=f"● {name}", text_color="#2ea043"
+        )
+        self.startSpec_button.configure(state="normal")
 
 
 def setting_spec(self):
@@ -48,23 +73,18 @@ def setting_spec(self):
     self.entries.grid(row=1, column=0, padx=10, pady=(0,0), columnspan=2)
 
     self.selected_channelSpec = ctk.StringVar(value="MA1")  # Establecer el valor predeterminado
-    self.selected_scopeSpec = ctk.StringVar(value="1") #Elegir osciloscopio
 
-    # Contenedor para Scopes
-    self.scopes_frameSpec = ctk.CTkFrame(self.optionSpectrum)
-    self.scopes_frameSpec.grid(row=2, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
-
-    self.scope1Spec = ctk.CTkRadioButton(self.scopes_frameSpec, text="RTA", variable=self.selected_scopeSpec, value="1")
-    self.scope1Spec.grid(row=0, column=0, padx=(10, 5), pady=(10, 5))
-
-    self.scope2Spec = ctk.CTkRadioButton(self.scopes_frameSpec, text="RTO", variable=self.selected_scopeSpec, value="2")
-    self.scope2Spec.grid(row=0, column=1, padx=(5, 10), pady=(10, 5))
-
-    self.scope3Spec = ctk.CTkRadioButton(self.scopes_frameSpec, text="KEY", variable=self.selected_scopeSpec, value="3")
-    self.scope3Spec.grid(row=1, column=0, padx=(10, 5), pady=(5, 10))
-
-    self.scope_emptySpec = ctk.CTkLabel(self.scopes_frameSpec, text="")  # Espacio vacío
-    self.scope_emptySpec.grid(row=1, column=1, padx=(5, 10), pady=(5, 10))
+    # Scope: a single read-only label that mirrors the connected
+    # oscilloscope in self.connect_cards. No more RTA/RTO/KEY
+    # radio buttons: the SCPI dialect is now derived from the
+    # instrument_id in the adapter layer.
+    self.scopeSpec_label_title = ctk.CTkLabel(self.optionSpectrum, text="Scope:", anchor="w")
+    self.scopeSpec_label_title.grid(row=2, column=0, padx=10, pady=(10, 0), sticky="w")
+    self.scopeSpec_label = ctk.CTkLabel(
+        self.optionSpectrum, text="(no scope connected)", anchor="w",
+        text_color="#a0a0a0",
+    )
+    self.scopeSpec_label.grid(row=2, column=1, padx=10, pady=(10, 0), sticky="w")
 
     # Contenedor para Channels
     self.channels_frameSpec = ctk.CTkFrame(self.optionSpectrum)
@@ -84,7 +104,7 @@ def setting_spec(self):
 
 
     # Crear el botón de start
-    self.startSpec_button = ctk.CTkButton(self.optionSpectrum, text="Start", command=self.start_spectrum)
+    self.startSpec_button = ctk.CTkButton(self.optionSpectrum, text="Start", command=self.start_spectrum, state="disabled")
     self.startSpec_button.grid(row=10, column=0, padx=10, pady=(20,5), columnspan=2, sticky="s")
 
     # Crear el botón de stop
@@ -105,3 +125,6 @@ def setting_spec(self):
     # Crear el botón de fitting
     self.peaks_button = ctk.CTkButton(self.analysisSpec, text="Finder peaks",command=lambda: _do_finding_peaks(self),width=120)
     self.peaks_button.grid(row=0, column=0, padx=(10), pady=(20,5))
+
+    # Initial population of the scope label from current connect state.
+    _refresh_scope_label(self)
