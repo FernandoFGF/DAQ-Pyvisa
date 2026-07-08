@@ -1,20 +1,24 @@
 """
 Waveform acquisition adapter.
 
-Mirrors ``daq_gui_func.start_wf`` (lines 702-849). The legacy captures
-a segmented waveform acquisition: it spends ``time_seconds`` ticking
+Mirrors ``daq_gui_func.start_wf`` (lines 702-849) and uses the SCPI
+constants / helpers from the legacy ``old/dictionary_SCPI.py`` (now
+homed in ``acquisition/scpi_dictionary``). The legacy captures a
+segmented waveform acquisition: it spends ``time_seconds`` ticking
 (``lm.chronometter``), then queries the scope ``numCounts`` times for
 each segment, writes one file per segment, packages the result into a
 zip and records a ``DATA.txt`` companion used later by the DCR/slider
 analysis.
 
-Three scope dialects are supported, same as the legacy:
+Three scope dialects are supported, exactly like the legacy:
 
-  * scope 1 (RTA) and 2 (RTO): ``:WAV:MODE NORM`` then read with
-    ``FORM ASC`` / ``FORM BORD`` depending on scope.
-  * scope 3 (KEY): segmented acquisition with ``:WAV:MODE RAW``,
-    iterates ``:WAV:SEGM:COUN`` segments, reads the per-segment TSR
-    timestamp to detect duplicates.
+  * scope 1 (RTA): per-segment read with the history buffer
+    (``CHAN:HIST:CURR`` + ``CHAN:DATA?`` + ``CHAN:HIST:TSR?``).
+  * scope 2 (RTO): same as RTA plus ``CHAN2:HIST:STAT ON`` to enable
+    the history acquisition.
+  * scope 3 (KEY): segmented acquisition driven by
+    ``:ACQuire:SEGMented:COUNT?`` and ``:ACQuire:SEGMented:INDex <n>``,
+    reads the per-segment TSR timestamp to detect duplicates.
 
 The fake-friendly connection lets tests assert which SCPI commands
 were sent in which order.
@@ -29,6 +33,7 @@ from typing import Callable, Optional
 
 import numpy as np
 
+from acquisition import scpi_dictionary as ds
 from acquisition.connection import InstrumentConnection, open_pyvisa
 from acquisition.save import (
     create_zip,
@@ -151,25 +156,29 @@ class WaveformAcquisition:
                      progress_callback: Optional[Callable[[int, int], None]]) -> np.ndarray:
         """Keysight segmented acquisition (scope 3).
 
-        Mirrors daq_gui_func.start_wf: write each segment's file only
-        after the TSR has been checked against the previous one, so
-        duplicate consecutive TSRs cause an early exit without writing.
+        Mirrors ``daq_gui_func.start_wf`` exactly: the segment count
+        comes from ``:ACQuire:SEGMented:COUNT?``, each segment is
+        selected via ``:ACQuire:SEGMented:INDex <i>``, the waveform
+        is read with ``:WAVeform:DATA?`` and the per-segment TSR
+        timestamp with ``:WAVeform:SEGMented:TTAG?``. A repeated TSR
+        triggers an early exit (no file is written for the duplicate).
         """
         conn.write(":STOP")
-        conn.write(":WAV:MODE RAW")
-        conn.write(f":WAV:SOUR CHAN{self.channel}")
-        n_segments = int(conn.query(":WAV:SEGM:COUN?").strip())
+        conn.write(ds.asciiKey)
+        conn.write(ds.channelKey(self.channel))
+        n_segments = int(conn.query(ds.numCountsKey).strip())
         prev_tsr: Optional[str] = None
         y_data = np.array([], dtype=float)
         for i in range(n_segments):
-            conn.write(f":WAV:SEGM:IND {i + 1}")
-            raw = conn.query(":WAV:DATA?")
+            conn.write(ds.selectCurrKey(n_segments, i + 1))
+            self._waiting(conn)
+            raw = conn.query(ds.waveformkey)
             cleaned = raw.strip().replace("\n", "").replace("\r", "")
             y_data = np.array(
                 [float(x) for x in cleaned.split(",") if x.strip()],
                 dtype=float,
             )
-            tsr = conn.query(":WAV:SEGM:TTAG?").strip()
+            tsr = conn.query(":WAVeform:SEGMented:TTAG?").strip()
             if tsr == prev_tsr:
                 break
             prev_tsr = tsr
@@ -180,26 +189,50 @@ class WaveformAcquisition:
 
     def _acquire_rta_or_rto(self, conn: InstrumentConnection, path_f: str,
                             progress_callback: Optional[Callable[[int, int], None]]) -> np.ndarray:
-        """RTA/RTO per-segment read (scopes 1/2)."""
+        """RTA (scope 1) and RTO (scope 2) per-segment read.
+
+        The legacy path enables the scope's history buffer
+        (``CHAN2:HIST:STAT ON`` for RTO) and then walks through the
+        buffer with ``CHAN:HIST:CURR <n>``, reading
+        ``CHAN<channel>:DATA?`` and ``CHAN:HIST:TSR?`` for each
+        segment. ``CHAN:HIST:CURR`` is given as ``-trigg + (i+1)``,
+        so segment ``i=0`` maps to ``-trigg+1`` (the oldest entry)
+        and ``i=trigg-1`` to ``1`` (the most recent).
+        """
         conn.write("STOP")
-        conn.write("FORM ASC")
-        conn.write("FORM BORD LSBF")
-        n_segments = int(conn.query(":WAV:COUN?").strip())
+        conn.write(ds.ascii)
+        conn.write(ds.lsbf)
+        n_segments = int(conn.query(ds.numCounts).strip())
         if self.scope_id == SCOPE_RTO:
-            conn.write(":HIST:STAT ON")
+            conn.write(ds.openHist(self.scope_id))
         y_data = np.array([], dtype=float)
         for i in range(n_segments):
-            conn.write(f":WAV:SOUR CHAN{self.channel}")
-            raw = conn.query(f":WAV:DATA?")
+            conn.write(ds.selectCurr(n_segments, i))
+            y_aux = conn.query(ds.waveform(self.channel))
             y_data = np.array(
-                [float(x) for x in raw.split(",") if x.strip()],
+                [float(x) for x in y_aux.split(",") if x.strip()],
                 dtype=float,
             )
-            tsr = conn.query(":WAV:SEGM:TTAG?").strip()
+            self._waiting(conn)
+            tsr = conn.query(ds.tsr)
             write_waveform_file(os.path.dirname(path_f), tsr, y_data, i)
             if progress_callback is not None:
                 progress_callback(i + 1, n_segments)
         return y_data
+
+    @staticmethod
+    def _waiting(conn: InstrumentConnection) -> None:
+        """Block until the scope reports ``*OPC`` (operation complete).
+
+        Mirrors the legacy ``lm.waiting(rta)`` call. The fake test
+        connection answers ``*OPC?`` with an empty string by default,
+        which is fine for tests; on real hardware this gives the scope
+        a moment to finish the pending command.
+        """
+        try:
+            conn.query(ds.rdy)
+        except Exception:
+            pass
 
     @staticmethod
     def _infer_time_base_and_points(conn: InstrumentConnection,
