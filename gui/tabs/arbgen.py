@@ -288,14 +288,21 @@ def _arbgen_live_conn(app):
     per-channel switches talk to the same session the command
     line uses. Returns ``None`` if the AWG is not connected,
     in which case the adapter just prints the SCPI line.
+
+    Falls back to ``app.gui_funcs`` (the legacy facade) for
+    backwards compatibility with older test stubs.
     """
     cards = getattr(app, "connect_cards", None)
     if not cards:
         return None
-    widgets = cards.get("arbGen")
-    if not isinstance(widgets, dict):
-        return None
-    return widgets.get("connection")
+    # Try the standard "arbGen" key first.
+    for key in ("arbGen",):
+        widgets = cards.get(key)
+        if isinstance(widgets, dict):
+            conn = widgets.get("connection")
+            if conn is not None:
+                return conn
+    return None
 
 
 def arbgen_toggle_output(self, channel: str, value: str = None) -> None:

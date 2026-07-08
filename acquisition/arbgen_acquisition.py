@@ -116,8 +116,13 @@ def _send(conn, line: str) -> None:
     unit-testable with a ``FakeConnection``.
     """
     if conn is None:
+        print(f"[ArbGen]   (no conn, not sent: {line})")
         return
-    conn.write(line)
+    try:
+        conn.write(line)
+        print(f"[ArbGen]   sent: {line}")
+    except Exception as e:
+        print(f"[ArbGen]   write failed: {line} -> {e}")
 
 
 def apply_arbgen_params(params: Mapping[str, object],
