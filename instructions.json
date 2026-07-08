@@ -40,26 +40,14 @@ Mueve el marcador con el mando giratorio para recorrer la función matemática"
   },
   "waveform": {
     "rta": [
-      "Waveform - RTA (R&S RTA4000 series)",
-      "1. Press 'Connect' on the RTA card in the Connect tab.",
-      "2. Open the Waveform tab. Optionally set 'Set time to acquire' (in seconds; 0 = immediate).",
-      "3. Pick the channel (Ch1..Ch4).",
-      "4. Type a file name in the right option_frame. If empty, a default-YYYY-MM-DD-HH-MM-SS name is used.",
-      "5. Press Start. The adapter walks the history buffer: FORM ASCii + FORM:BORD LSBF + CHAN:HIST:CURR + CHAN:DATA? + CHAN:HIST:TSR?.",
-      "6. The terminal prints [Waveform] progress: i/n segments (pct%) while running.",
-      "7. Press Stop to cooperatively cancel; the current segment finishes, then the worker exits.",
-      "8. The Analysis tab shows Calculate Dcr (rate of captures), a slider to step through each segment waveform, and +/- buttons."
+      "Configurar Adquisition para las tomas que queremos.
+      Configurar el tamaño de cada muestra
+      Pulsar en single y pulsar en Start"
     ],
     "rto": [
-      "Waveform - RTO (R&S RTO2000 series)",
-      "1. Press 'Connect' on the RTO card in the Connect tab.",
-      "2. Open the Waveform tab. Optionally set 'Set time to acquire' (in seconds; 0 = immediate).",
-      "3. Pick the channel (Ch1..Ch4).",
-      "4. Type a file name in the right option_frame. If empty, a default-YYYY-MM-DD-HH-MM-SS name is used.",
-      "5. Press Start. The adapter enables the history buffer (CHAN2:HIST:STAT ON) then walks it: FORM ASCii + FORM:BORD LSBF + CHAN:HIST:CURR + CHAN:DATA? + CHAN:HIST:TSR?.",
-      "6. The terminal prints [Waveform] progress: i/n segments (pct%) while running.",
-      "7. Press Stop to cooperatively cancel; the current segment finishes, then the worker exits.",
-      "8. The Analysis tab shows Calculate Dcr, a slider to step through each segment waveform, and +/- buttons."
+      "Configurar Adquisition para las tomas que queremos.
+      Configurar el tamaño de cada muestra
+      Pulsar en single y pulsar en Start"
     ],
     "keysight": [
       "Waveform - Keysight",
