@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import shutil
-from typing import Iterable, Sequence
+from typing import Iterable, Optional, Sequence
 
 import numpy as np
 
@@ -93,15 +93,27 @@ def write_waveform_metadata(path_data_txt: str, time_base: float, num_points: in
         f.write(f"scope={scope} time_base={time_base} num_points={num_points}\n")
 
 
-def create_zip(path_dir: str, name: str) -> str:
+def create_zip(path_dir: str, name: str, output_dir: Optional[str] = None) -> str:
     """Create a zip archive of ``path_dir`` and return the zip path.
 
     Replaces ``lab_module.create_zip`` / ``create_zip_archive``. Uses
-    ``shutil.make_archive`` which produces ``<name>.zip`` next to
-    ``path_dir``.
+    ``shutil.make_archive`` which produces ``<name>.zip``.
+
+    By default the zip is written next to ``path_dir`` (i.e. in its
+    parent directory). When ``output_dir`` is given, the zip is
+    written into that directory instead — used by the waveform
+    acquisition to keep the zip inside the run directory next to
+    the segment files.
     """
-    parent = os.path.dirname(path_dir.rstrip("/\\")) or "."
-    base = os.path.basename(path_dir.rstrip("/\\"))
-    zip_path = os.path.join(parent, base)
-    archive = shutil.make_archive(zip_path, "zip", root_dir=parent, base_dir=base)
+    path_dir = path_dir.rstrip("/\\")
+    base = os.path.basename(path_dir)
+    if output_dir is None:
+        parent = os.path.dirname(path_dir) or "."
+        zip_root = os.path.join(parent, base)
+    else:
+        output_dir = output_dir.rstrip("/\\")
+        zip_root = os.path.join(output_dir, base)
+    archive = shutil.make_archive(zip_root, "zip",
+                                  root_dir=os.path.dirname(path_dir) or ".",
+                                  base_dir=base)
     return archive

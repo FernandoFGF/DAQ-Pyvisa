@@ -115,13 +115,13 @@ class WaveformAcquisition:
         conn = self._conn
         assert conn is not None
 
-        # Build directory layout: <save_root>/<name> with subdir <name>
+        # Directory layout: <save_root>/<name>/ with the segment
+        # files, DATA.txt and the zip all living side by side. No
+        # nested <name>/<name>/ subdir.
         path = os.path.join(self.save_root, self.name)
+        remove_path(path)
         ensure_dir(path)
-        path_d = os.path.join(path, self.name)
-        remove_path(path_d)
-        ensure_dir(path_d)
-        path_f = os.path.join(path_d, self.name)
+        path_d = path  # back-compat alias used by the GUI / tests.
 
         # Chronometer: legacy used ``lm.chronometter`` which is essentially
         # a ``time.sleep`` that prints progress. We replicate with a plain
@@ -138,15 +138,18 @@ class WaveformAcquisition:
 
         y_data: np.ndarray = np.array([], dtype=float)
         if self.scope_id == SCOPE_KEY:
-            y_data = self._acquire_key(conn, path_d, path_f, progress_callback)
+            y_data = self._acquire_key(conn, path, progress_callback)
         else:
-            y_data = self._acquire_rta_or_rto(conn, path_f, progress_callback)
+            y_data = self._acquire_rta_or_rto(conn, path, progress_callback)
 
         # DATA.txt + zip
         time_base, num_points = self._infer_time_base_and_points(conn, y_data)
-        path_fd = os.path.join(path_d, "DATA.txt")
+        path_fd = os.path.join(path, "DATA.txt")
         write_waveform_metadata(path_fd, time_base, num_points, start_time, self.scope_id)
-        zip_path = create_zip(path, self.name)
+        # Keep the zip inside the run directory, sibling of the data
+        # files (output_dir=path). ``create_zip`` defaults to the
+        # parent directory for back-compat with other callers.
+        zip_path = create_zip(path, self.name, output_dir=path)
 
         # Time axis: scope 3 used 10x, others 12x (legacy)
         if self.scope_id == SCOPE_KEY:
@@ -165,7 +168,7 @@ class WaveformAcquisition:
 
     # ---- Per-dialect acquisition ----
 
-    def _acquire_key(self, conn: InstrumentConnection, path_d: str, path_f: str,
+    def _acquire_key(self, conn: InstrumentConnection, path: str,
                      progress_callback: Optional[Callable[[int, int], None]]) -> np.ndarray:
         """Keysight segmented acquisition (scope 3).
 
@@ -199,12 +202,12 @@ class WaveformAcquisition:
             if tsr == prev_tsr:
                 break
             prev_tsr = tsr
-            write_waveform_file(path_d, tsr, y_data, i)
+            write_waveform_file(path, tsr, y_data, i)
             if progress_callback is not None:
                 progress_callback(i + 1, n_segments)
         return y_data
 
-    def _acquire_rta_or_rto(self, conn: InstrumentConnection, path_f: str,
+    def _acquire_rta_or_rto(self, conn: InstrumentConnection, path: str,
                             progress_callback: Optional[Callable[[int, int], None]]) -> np.ndarray:
         """RTA (scope 1) and RTO (scope 2) per-segment read.
 
@@ -236,7 +239,7 @@ class WaveformAcquisition:
             )
             self._waiting(conn)
             tsr = conn.query(ds.tsr)
-            write_waveform_file(os.path.dirname(path_f), tsr, y_data, i)
+            write_waveform_file(path, tsr, y_data, i)
             if progress_callback is not None:
                 progress_callback(i + 1, n_segments)
         return y_data

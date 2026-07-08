@@ -155,6 +155,43 @@ class KeyWaveformTests(unittest.TestCase):
             self.assertIn(ds.selectCurrKey(5, 2), conn.writes)
 
 
+class WaveformOutputStructureTests(unittest.TestCase):
+    """The output layout must be a single run directory containing
+    the segment files, DATA.txt and the zip — no nested
+    ``<name>/<name>/`` subdirectory."""
+
+    def test_run_dir_is_single_level(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            conn = FakeConnection()
+            conn.set_response(ds.numCounts, "2")
+            conn.set_default_response("0.1,0.2,0.3,0.4")
+            conn.set_response_prefix(ds.tsr, "1700000000.0")
+            conn.set_response(":TIM:SCAL?", "0.001")
+
+            acq = WaveformAcquisition(
+                scope_id=SCOPE_RTA, channel="1", time_seconds=0,
+                save_root=tmp, name="structrun",
+            )
+            acq.set_connection(conn)
+            result = acq.run()
+
+            # The run dir lives at <save_root>/<name>/.
+            run_dir = os.path.join(tmp, "structrun")
+            self.assertEqual(result.path_d, run_dir)
+            # No nested <name>/<name>/ subdirectory.
+            nested = os.path.join(run_dir, "structrun")
+            self.assertFalse(os.path.isdir(nested),
+                             f"Nested dir {nested} should not exist")
+            # Segment files and DATA.txt are siblings inside the run dir.
+            self.assertTrue(os.path.isfile(os.path.join(run_dir, "structrun_0.txt")))
+            self.assertTrue(os.path.isfile(os.path.join(run_dir, "structrun_1.txt")))
+            self.assertTrue(os.path.isfile(os.path.join(run_dir, "DATA.txt")))
+            # Zip is a sibling too, not in the parent.
+            self.assertTrue(result.zip_path.endswith(".zip"))
+            self.assertEqual(os.path.dirname(result.zip_path), run_dir)
+            self.assertTrue(os.path.isfile(result.zip_path))
+
+
 class WaveformCooperativeStopTests(unittest.TestCase):
     """``request_stop()`` must cause the per-segment loop to exit
     cleanly between iterations, not mid-segment."""
