@@ -117,9 +117,9 @@ def _build_channel_panel(parent: ctk.CTkFrame, channel: str) -> dict:
     # --- Channel header -----------------------------------------------------
     header = ctk.CTkLabel(
         panel, text=f"Channel {channel[-1]}",
-        font=("", 15, "bold"), anchor="w",
+        font=("", 15, "bold"), anchor="center",
     )
-    header.grid(row=0, column=0, columnspan=2, padx=20, pady=(12, 8), sticky="w")
+    header.grid(row=0, column=0, columnspan=2, padx=20, pady=(12, 8), sticky="ew")
 
     # --- Wave type ---------------------------------------------------------
     ctk.CTkLabel(panel, text="Waveform", font=("", 12, "bold"),
@@ -147,21 +147,27 @@ def _build_channel_panel(parent: ctk.CTkFrame, channel: str) -> dict:
         options=["HiZ", "50 Ohm"], default="HiZ",
     )
 
-    # --- Update button ----------------------------------------------------
+    # --- Update + On/Off on the same row ---------------------------------
+    # Column 0 holds the "Apply" sub-group (label + Update button),
+    # column 1 holds the "Output" sub-group (label + slide switch).
+    # Both sub-groups share a single row so the two controls are
+    # at the same height.
     ctk.CTkLabel(panel, text="Apply", font=("", 12, "bold"),
-                 anchor="w").grid(row=10, column=0, columnspan=2, padx=20,
+                 anchor="w").grid(row=10, column=0, padx=(20, 6),
                                   pady=(12, 4), sticky="w")
     update_button = ctk.CTkButton(panel, text="Update", width=160)
-    update_button.grid(row=11, column=0, columnspan=2, padx=20, pady=(4, 8), sticky="w")
+    update_button.grid(row=11, column=0, padx=(20, 6), pady=(4, 12), sticky="w")
 
-    # --- Output enable slide switch (immediate) --------------------------
     ctk.CTkLabel(panel, text="Output", font=("", 12, "bold"),
-                 anchor="w").grid(row=12, column=0, columnspan=2, padx=20,
-                                  pady=(8, 4), sticky="w")
-    output = _make_slide_switch(
-        panel, row=13, label="On/Off:",
-        options=["OFF", "ON"], default="OFF",
+                 anchor="w").grid(row=10, column=1, padx=(6, 20),
+                                  pady=(12, 4), sticky="w")
+    # Slide switch without the helper's "On/Off:" label — the
+    # "Output" header above already names the section.
+    output = ctk.CTkSegmentedButton(
+        panel, values=["OFF", "ON"], width=180,
     )
+    output.set("OFF")
+    output.grid(row=11, column=1, padx=(6, 20), pady=(4, 12), sticky="w")
 
     return {
         "frame": panel,
