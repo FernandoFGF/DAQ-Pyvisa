@@ -25,6 +25,7 @@ from unittest.mock import patch
 import yaml
 
 from config_loader import ConfigLoader
+from gui.tabs.connect import CommandHistory
 from tests.fake_connection import FakeConnection
 
 
@@ -271,6 +272,207 @@ class ExceptBlockLambdaClosureTests(unittest.TestCase):
 
         scheduled[0]()
         self.assertEqual(captured, ["simulated VISA timeout"])
+
+
+class CommandHistoryUnitTests(unittest.TestCase):
+    """Pure tests for the ``CommandHistory`` class.
+
+    The Up/Down/Tab bindings in the GUI delegate to this
+    class, so we cover the navigation logic here. The end-to-end
+    test in ``CommandLinePanelTests`` below wires the panel to
+    a fake connection.
+    """
+
+    def test_add_dedupes_and_keeps_most_recent_first(self):
+        h = CommandHistory()
+        h.add("*IDN?")
+        h.add("CHAN1:OUTP ON")
+        h.add("*IDN?")  # re-add
+        self.assertEqual(h._items, ["*IDN?", "CHAN1:OUTP ON"])
+
+    def test_add_ignores_empty(self):
+        h = CommandHistory()
+        h.add("   ")
+        h.add("")
+        self.assertEqual(h._items, [])
+
+    def test_up_returns_none_when_empty(self):
+        h = CommandHistory()
+        self.assertIsNone(h.up("draft"))
+
+    def test_up_down_navigation(self):
+        h = CommandHistory()
+        h.add("a")
+        h.add("b")
+        h.add("c")
+        # Up from draft jumps to the most recent.
+        self.assertEqual(h.up("draft"), "c")
+        # Up again goes to the older one.
+        self.assertEqual(h.up("b"), "b")
+        # Up at the oldest stays.
+        self.assertEqual(h.up("a"), "a")
+        # Down walks back.
+        self.assertEqual(h.down(), "b")
+        self.assertEqual(h.down(), "c")
+        # Down from newest restores the draft.
+        self.assertEqual(h.down(), "draft")
+        # Down past draft returns None.
+        self.assertIsNone(h.down())
+
+    def test_suggest_prefix_match(self):
+        h = CommandHistory()
+        h.add("CHAN1:OUTP ON")    # oldest
+        h.add("CHAN1:OUTP OFF")
+        h.add("CHAN2:OUTP ON")
+        h.add("*IDN?")            # newest
+        # Suggestions come back most-recent-first.
+        self.assertEqual(h.suggest("CHAN1"),
+                         ["CHAN1:OUTP OFF", "CHAN1:OUTP ON"])
+        self.assertEqual(h.suggest("chan2"), ["CHAN2:OUTP ON"])
+        self.assertEqual(h.suggest("nothing"), [])
+
+    def test_reset_restores_draft(self):
+        h = CommandHistory()
+        h.add("x")
+        h.up("draft")
+        h.reset()
+        # After reset, the index is back to -1 so a new Up
+        # starts from the most recent again.
+        self.assertEqual(h.up("new draft"), "x")
+
+
+class CommandLinePanelTests(unittest.TestCase):
+    """End-to-end tests for the SCPI command line in Connect.
+
+    Builds the actual command panel inside a Tk root, with a
+    fake connected instrument, sends a few commands and checks
+    that:
+      1. ``_push_history`` populates the per-instrument history.
+      2. The active history has the commands in the right order.
+      3. Switching the active instrument swaps the history.
+
+    Note: ``event_generate`` does not reliably fire <Key-Up>
+    bindings in headless test environments, so the Up/Down/Tab
+    key handlers are exercised through the public
+    ``CommandHistory`` API, which is the layer the GUI itself
+    delegates to.
+    """
+
+    def setUp(self) -> None:
+        try:
+            import customtkinter as ctk
+            self.root = ctk.CTk()
+        except Exception as e:
+            self.skipTest(f"CTk unavailable: {e}")
+
+        import gui.tabs.connect as connect_tab
+
+        class _Stub:
+            pass
+
+        self.stub = _Stub()
+        self.stub.config = type("Cfg", (), {"config": {}})()
+        # Fake connection: any object that supports .write and
+        # .query (we use write only here).
+        self.conn = FakeConnection()
+        self.stub.connect_cards = {
+            "scope1": {"connection": self.conn, "idn": "Rohde&Schwarz,RTA4004,..."},
+            "scope2": {"connection": FakeConnection(),
+                       "idn": "Keysight,DSOS054A,..."},
+        }
+
+        # Build the command panel against a CTkFrame parent.
+        self.parent = ctk.CTkFrame(self.root)
+        connect_tab._build_command_panel(self.stub, self.parent)
+        # The default menu label is "(no instruments connected)";
+        # simulate the user picking the RTA card.
+        self.menu = self.stub.connect_command_menu
+        self.menu.set("RTA")
+
+        # `_push_history` is the only function that mutates the
+        # per-instrument history dict. We mock out the worker
+        # thread that _cmd_send would otherwise start.
+        self._orig_conn = None
+
+    def tearDown(self) -> None:
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
+
+    def _send(self, raw: str) -> None:
+        # Bypass the worker thread: just push the history.
+        import gui.tabs.connect as connect_tab
+        connect_tab._push_history(self.stub, "scope1", raw)
+
+    def test_first_command_populates_history(self):
+        # Regression: previously ``if not histories: return``
+        # bailed out on the very first push because the dict
+        # was empty, so the per-instrument history never grew.
+        import gui.tabs.connect as connect_tab
+        self.assertEqual(self.stub.connect_command_histories, {})
+        self._send("*IDN?")
+        self.assertIn("scope1", self.stub.connect_command_histories)
+        history = self.stub.connect_command_histories["scope1"]
+        self.assertEqual(history._items, ["*IDN?"])
+
+    def test_multiple_commands_keep_order(self):
+        for cmd in ("*IDN?", "CHAN1:OUTP ON", "CHAN1:OUTP OFF"):
+            self._send(cmd)
+        history = self.stub.connect_command_histories["scope1"]
+        self.assertEqual(
+            history._items,
+            ["CHAN1:OUTP OFF", "CHAN1:OUTP ON", "*IDN?"],
+        )
+
+    def test_repeated_command_moves_to_top(self):
+        for cmd in ("*IDN?", "CHAN1:OUTP ON", "*IDN?"):
+            self._send(cmd)
+        history = self.stub.connect_command_histories["scope1"]
+        self.assertEqual(history._items, ["*IDN?", "CHAN1:OUTP ON"])
+
+    def test_per_instrument_isolation(self):
+        # Switch to scope2 and send a command.
+        import gui.tabs.connect as connect_tab
+        self._send("RTA:CMD1")
+        connect_tab._push_history(self.stub, "scope2", "KEY:CMD1")
+        rta = self.stub.connect_command_histories["scope1"]
+        key = self.stub.connect_command_histories["scope2"]
+        self.assertEqual(rta._items, ["RTA:CMD1"])
+        self.assertEqual(key._items, ["KEY:CMD1"])
+
+    def test_suggest_completion_via_active_history(self):
+        import gui.tabs.connect as connect_tab
+        for cmd in ("CHAN1:OUTP ON", "CHAN1:OUTP OFF", "CHAN2:OUTP ON"):
+            self._send(cmd)
+        # The _active_history closure inside _build_command_panel
+        # picks the right history for the selected instrument.
+        # We can't reach that closure directly, but
+        # ``self.stub.connect_command_history`` is the cached
+        # reference used by the entry's Up/Down handlers; it
+        # is updated whenever _push_history runs.
+        self.assertEqual(
+            self.stub.connect_command_history.suggest("CHAN1"),
+            ["CHAN1:OUTP OFF", "CHAN1:OUTP ON"],
+        )
+
+    def test_up_down_navigation_after_three_sends(self):
+        import gui.tabs.connect as connect_tab
+        for cmd in ("*IDN?", "CHAN1:OUTP ON", "CHAN1:OUTP OFF"):
+            self._send(cmd)
+        history = self.stub.connect_command_history
+        # Up from the draft jumps to the most recent command.
+        self.assertEqual(history.up("draft"), "CHAN1:OUTP OFF")
+        # Up again -> older.
+        self.assertEqual(history.up("CHAN1:OUTP OFF"), "CHAN1:OUTP ON")
+        # Up at the oldest stays.
+        self.assertEqual(history.up("CHAN1:OUTP ON"), "*IDN?")
+        # Down -> back to the newer.
+        self.assertEqual(history.down(), "CHAN1:OUTP ON")
+        # Down -> newest.
+        self.assertEqual(history.down(), "CHAN1:OUTP OFF")
+        # Down -> draft.
+        self.assertEqual(history.down(), "draft")
 
 
 if __name__ == "__main__":

@@ -663,7 +663,8 @@ def _cmd_query(self, instrument_menu, cmd_entry) -> None:
 
 def _push_history(self, instrument_id: str, raw: str) -> None:
     histories = getattr(self, "connect_command_histories", None)
-    if not histories:
+    if histories is None:
+        # The command panel was never built. Nothing to do.
         return
     history = histories.get(instrument_id)
     if history is None:
