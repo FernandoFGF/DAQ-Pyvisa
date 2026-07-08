@@ -501,8 +501,10 @@ try:
             tab = self.tabview.get()
             if tab == "IV Curves":
                 self.gui_funcs.save_iv_results_to(name, path)
+                print(f"[Save] Fichero '{name}.txt' guardado correctamente en {path}.")
             elif tab == "Spectrum":
                 self.gui_funcs.save_spectrum_results_to(name, path)
+                print(f"[Save] Fichero '{name}.txt' guardado correctamente en {path}.")
             elif tab == "Waveform":
                 print("Esta funcion se guarda automaticamente")
 
