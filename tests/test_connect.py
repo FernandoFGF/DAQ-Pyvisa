@@ -152,6 +152,18 @@ class NormalizeAddressTests(unittest.TestCase):
                                           default_suffix="MYDEV"),
                          "USB::192.168.0.32::MYDEV")
 
+    def test_socket_form_is_preserved(self):
+        """R&S RTO scopes do not enable VXI-11 (RPC) by default; the
+        user must type the raw-TCP SCPI form
+        ``TCPIP::<ip>::5025::SOCKET`` so pyvisa skips the RPC
+        port-mapper probe. ``normalize_address`` must preserve the
+        full address verbatim (it already contains ``::``)."""
+        from gui.tabs.connect import normalize_address
+        self.assertEqual(
+            normalize_address("TCPIP::192.168.100.105::5025::SOCKET"),
+            "TCPIP::192.168.100.105::5025::SOCKET",
+        )
+
 
 class DefaultCardsShapeTests(unittest.TestCase):
     """``DEFAULT_CARDS`` is iterated in ``_refresh_connected_list`` to
