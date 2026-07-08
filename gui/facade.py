@@ -109,6 +109,9 @@ class DAQGUIFunctions:
                                           instrument_id=actual_instrument_id,
                                           num_datos=num_datos,
                                           config=self.config.config)
+                # Expose the live adapter so the GUI can request a
+                # cooperative stop via ``request_stop()``.
+                self._spectrum_acq = acq
                 result = acq.run(progress_callback=_on_progress)
                 payload = {
                     "data": result.data,
@@ -122,8 +125,10 @@ class DAQGUIFunctions:
                 self._dispatch_error(f"Spectrum measurement failed: {e}", error_callback)
             finally:
                 self.threads_active["spectrum"] = False
+                self._spectrum_acq = None
 
         self.threads_active["spectrum"] = True
+        self._spectrum_acq = None
         threading.Thread(target=_run, daemon=True).start()
 
     def start_waveform_full(self, scope: str, channel: str, time_seconds: float,
@@ -154,6 +159,7 @@ class DAQGUIFunctions:
                                           time_seconds=time_seconds,
                                           save_root=save_root, name=name,
                                           config=self.config.config)
+                self._waveform_acq = acq
                 result = acq.run()
                 payload = {
                     "path_d": result.path_d,
@@ -169,8 +175,10 @@ class DAQGUIFunctions:
                 self._dispatch_error(f"Waveform measurement failed: {e}", error_callback)
             finally:
                 self.threads_active["waveform"] = False
+                self._waveform_acq = None
 
         self.threads_active["waveform"] = True
+        self._waveform_acq = None
         threading.Thread(target=_run, daemon=True).start()
 
     # --- Persistence (delegates to acquisition.save) ---------------------
@@ -256,6 +264,19 @@ class DAQGUIFunctions:
         for key in ("iv", "spectrum", "waveform"):
             self.threads_active[key] = False
         self._notify_gui("data_ready", "All measurements stopped")
+
+    def get_running_spectrum(self):
+        """Return the live ``SpectrumAcquisition`` instance, or ``None``.
+
+        Lets the GUI ask the worker to stop cooperatively without
+        poking into facade internals.
+        """
+        acq = getattr(self, "_spectrum_acq", None)
+        if acq is None:
+            return None
+        if not self.threads_active.get("spectrum", False):
+            return None
+        return acq
 
     def cleanup(self) -> None:
         """Cleanup resources: stop measurements, disconnect instruments, drop

@@ -109,6 +109,10 @@ def open_pyvisa(instrument_id: str, config=None) -> InstrumentConnection:
     address = _resolve_address(instrument_id, config)
     rm = pyvisa.ResourceManager()
     resource = rm.open_resource(address)
+    try:
+        resource.timeout = 10000  # 10 s default for the Connect command line
+    except Exception:
+        pass
     return _PyvisaAdapter(resource)
 
 

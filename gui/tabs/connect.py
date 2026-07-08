@@ -592,7 +592,9 @@ def _selected_instrument_id(self, instrument_menu) -> str:
         current = instrument_menu.get()
     except Exception:
         return ""
-    for instrument_id, name, _ in DEFAULT_CARDS:
+    for entry in DEFAULT_CARDS:
+        instrument_id = entry[0]
+        name = entry[1] if len(entry) > 1 else instrument_id
         if name == current:
             return instrument_id
     return ""

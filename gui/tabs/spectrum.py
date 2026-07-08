@@ -18,13 +18,61 @@ import customtkinter as ctk
 
 
 def _do_finding_peaks(self):
-    from analysis.spectrum_analysis import parse_hist_data
+    from analysis.spectrum_analysis import (
+        find_histogram_peaks,
+        parse_hist_data,
+        plot_histogram_with_peaks,
+    )
     raw = self.hist_data.get()
     data = parse_hist_data(raw)
     if data.size == 0:
         print("Primero debes de recoger datos que analizar.")
         return
-    self.gui_funcs.plot_histogram_with_peaks(self.ax, data)
+    peaks = find_histogram_peaks(data)
+    # Redraw with the colour overlay + red 'x' peak markers.
+    self.gui_funcs.plot_histogram_with_peaks(self.ax, data, peaks_result=peaks)
+    try:
+        self.canvas.draw()
+        self.canvas.flush_events()
+        self.update_idletasks()
+    except Exception:
+        pass
+    _update_peaks_info(self, peaks)
+
+
+def _update_peaks_info(self, peaks: dict) -> None:
+    """Fill the Analysis tab info box with the list of found peaks.
+
+    Each entry shows the peak position (in charge units, the same units
+    as the x-axis) and the histogram count at that peak.
+    """
+    if not hasattr(self, "peaks_info"):
+        return
+    self.peaks_info.configure(state="normal")
+    self.peaks_info.delete("0.0", "end")
+    if not peaks.get("ok", False):
+        msg = peaks.get("message", "No peaks found.")
+        self.peaks_info.insert("0.0", msg)
+    else:
+        n = peaks["peak_bin_centers"].size
+        if n == 0:
+            self.peaks_info.insert("0.0", "No peaks above prominence threshold.")
+        else:
+            self.peaks_info.insert(
+                "0.0",
+                f"Found {n} peak{'s' if n != 1 else ''}:\n"
+                f"(prominence >= {peaks.get('prominence', '?')})\n\n"
+            )
+            for i, (pos, height) in enumerate(
+                zip(peaks["peak_bin_centers"], peaks["peak_heights"]), start=1
+            ):
+                self.peaks_info.insert("end", f"  #{i}: {pos:.5g}  (count: {int(height)})\n")
+            self.peaks_info.insert(
+                "end",
+                f"\nMin: {float(peaks['peak_bin_centers'].min()):.5g}\n"
+                f"Max: {float(peaks['peak_bin_centers'].max()):.5g}",
+            )
+    self.peaks_info.configure(state="disabled")
 
 
 def _refresh_scope_label(self) -> None:
@@ -121,10 +169,22 @@ def setting_spec(self):
     # Crear el primer contenedor (izquierda)
     self.analysisSpec = ctk.CTkFrame(self.tabviewSpec.tab("Analysis"))
     self.analysisSpec.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+    self.analysisSpec.grid_rowconfigure(2, weight=1)
+    self.analysisSpec.grid_columnconfigure(0, weight=1)
 
     # Crear el botón de fitting
     self.peaks_button = ctk.CTkButton(self.analysisSpec, text="Finder peaks",command=lambda: _do_finding_peaks(self),width=120)
-    self.peaks_button.grid(row=0, column=0, padx=(10), pady=(20,5))
+    self.peaks_button.grid(row=0, column=0, padx=(10), pady=(20,5), sticky="w")
+
+    # Etiqueta y cuadro informativo con los picos encontrados.
+    self.peaks_info_label = ctk.CTkLabel(
+        self.analysisSpec, text="Peaks found:", anchor="w"
+    )
+    self.peaks_info_label.grid(row=1, column=0, padx=10, pady=(10, 0), sticky="w")
+
+    self.peaks_info = ctk.CTkTextbox(self.analysisSpec, width=220, height=200)
+    self.peaks_info.grid(row=2, column=0, padx=10, pady=(5, 10), sticky="nsew")
+    self.peaks_info.configure(state="disabled")
 
     # Initial population of the scope label from current connect state.
     _refresh_scope_label(self)

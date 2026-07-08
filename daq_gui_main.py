@@ -13,6 +13,7 @@ try:
 
     """
     import sys
+    import time
     import customtkinter
     from gui.facade import DAQGUIFunctions
     from gui.tabs import connect as connect_tab
@@ -538,41 +539,106 @@ try:
             if not num_datos_raw:
                 print("Introduce un valor para entries primero.")
                 return
-            num_datos = int(num_datos_raw)
+            try:
+                num_datos = int(num_datos_raw)
+            except ValueError:
+                print("El número de muestras debe ser un entero.")
+                return
+            if num_datos <= 0:
+                print("El número de muestras debe ser > 0.")
+                return
             active = self.get_active_scope()
             if active is None:
                 print("Connect an oscilloscope in the Connect tab first.")
                 return
-            scope, _instrument_id_friendly = active[0], active[1]
-            instrument_id = active[1]
+            scope, instrument_id, friendly = active
             channel = self.selected_channelSpec.get()
+            print(f"[Spectrum] Start: {num_datos} samples, scope={friendly} "
+                  f"({instrument_id}, dialect {scope!r}), channel={channel}")
+
+            # If the user did not provide a file name, fall back to a
+            # default like "default-2026-07-08-10-55-12" so the
+            # "Open folder" button always has something to look at and
+            # the eventual save step never fails on a missing name.
+            if not self.save_entry.get().strip():
+                default_name = "default-" + time.strftime("%Y-%m-%d-%H-%M-%S")
+                self.save_entry.delete(0, "end")
+                self.save_entry.insert(0, default_name)
+                print(f"[Spectrum] No file name set, using '{default_name}'.")
+
+            # Make sure the Spectrum tab is the active one so the live
+            # histogram is actually visible while it grows. Switching
+            # tabs also realizes the embedded matplotlib canvas, which
+            # is required for draw() to paint to the screen.
+            try:
+                self.tabview.set("Spectrum")
+            except Exception:
+                pass
+
+            def _refresh_liveplot(arr, final: bool = False):
+                """Redraw the live histogram with the latest sample batch.
+
+                We rebuild the figure on every progress callback so the
+                canvas is always realized inside the active Spectrum
+                tab. Reusing a stale canvas created before the tab was
+                ever shown would result in draw() calls that never
+                reach the screen.
+
+                The DAQ tab shows a plain histogram only; peak finding
+                and the colour overlay are reserved for the Analysis
+                tab's "Finder peaks" button.
+                """
+                from matplotlib.figure import Figure
+                from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+                fig = Figure(figsize=(6, 4), dpi=100)
+                self.ax = fig.add_subplot(111)
+                self.ax.set_xlabel("Charge(Vs)")
+                self.ax.hist(arr, bins=50)
+                if hasattr(self, "canvas") and self.canvas is not None:
+                    try:
+                        self.canvas.get_tk_widget().destroy()
+                    except Exception:
+                        pass
+                self.canvas = FigureCanvasTkAgg(fig, self.liveplot)
+                self.canvas.get_tk_widget().grid(
+                    row=0, column=0, padx=20, pady=20, sticky="nsew"
+                )
+                self.canvas.draw()
+                self.canvas.flush_events()
+                self.update_idletasks()
 
             def _on_results(payload):
+                _refresh_liveplot(payload['data'], final=True)
                 data = payload['data']
                 self.values_aux.set(" ".join(f"{x:.6g}" for x in data))
                 # Update hist_data for the Analysis tab (Finder peaks button).
                 self.hist_data.set("(" + ", ".join(f"{x:.6g}" for x in data) + ")")
-                # Redraw the live histogram with the final data.
-                plot_histogram_with_peaks(self.ax, data)
-                self.canvas.draw()
-                self.update_idletasks()
-                print("Finish histogram.")
+                print(f"[Spectrum] Finish histogram ({data.size} samples).")
 
             def _on_progress(arr):
-                # Live update every progress callback (~every 100 samples).
-                self.ax.clear()
-                self.ax.hist(arr, bins=50)
-                self.canvas.draw()
-                self.update_idletasks()
+                _refresh_liveplot(arr, final=False)
 
             def _on_error(msg):
-                print("Error:", msg)
+                print("[Spectrum] Error:", msg)
 
+            self._spectrum_user_stopped = False
             self.startSpec_button.configure(state="disabled")
+            self.stopSpec_button.configure(state="normal")
+
+            # Make sure today's Spectrum output folder exists so the
+            # "Open folder" button works even if the user never saved
+            # the file manually. We do not write a file here, just
+            # create the directory.
+            try:
+                lm.create_directory(lm.get_path("Spectrum"))
+            except Exception as _e_dir:
+                print("[Spectrum] Could not create output folder:", _e_dir)
 
             def _reenable():
                 lm.beep()
-                self.startSpec_button.configure(state="normal")
+                if not self._spectrum_user_stopped:
+                    self.startSpec_button.configure(state="normal")
+                self.stopSpec_button.configure(state="disabled")
 
             self.gui_funcs.start_spectrum_full(
                 num_datos=num_datos,
@@ -585,13 +651,22 @@ try:
             )
 
         def stop_spectrum(self):
+            """Request a cooperative stop of the running spectrum worker.
 
-            #self.thread_spec_activo = False
-            # Esperar a que el hilo termine su ejecución
-            #self.thread_spec.join()
-            #self.stopSpec_button.configure(state="disable")
-            #self.startSpec_button.configure(state="normal")
-            print("No para")
+            The adapter checks ``_stop_requested`` between samples, so
+            the worker will finish its current iteration (or the
+            in-flight query's timeout) and then exit. ``Start`` stays
+            disabled until the worker has actually returned, so we
+            don't risk starting a second acquisition on top of the
+            first.
+            """
+            acq = self.gui_funcs.get_running_spectrum()
+            if acq is None:
+                print("[Spectrum] No hay medición en curso.")
+                return
+            self._spectrum_user_stopped = True
+            print("[Spectrum] Solicitando parada tras la muestra actual...")
+            acq.request_stop()
 
         def start_wf(self):
             """
@@ -709,9 +784,9 @@ try:
         from matplotlib.figure import Figure
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
         fig = Figure(figsize=(6, 4), dpi=100)
-        a_x = fig.add_subplot(111)
-        a_x.set_xlabel("Charge(Vs)")
-        a_x.hist([1, 2, 3, 4, 5])
+        self.ax = fig.add_subplot(111)
+        self.ax.set_xlabel("Charge(Vs)")
+        self.ax.hist([1, 2, 3, 4, 5])
         self.canvas = FigureCanvasTkAgg(fig, self.liveplot)
         self.canvas.draw()
         self.canvas.get_tk_widget().grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
