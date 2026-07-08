@@ -839,8 +839,8 @@ try:
         from matplotlib.figure import Figure
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
         fig = Figure(figsize=(6, 4), dpi=100)
-        a_x = fig.add_subplot(111)
-        a_x.plot([1, 2, 3, 4, 5], [10, 10, 50, 40, 10])
+        self.ax = fig.add_subplot(111)
+        self.ax.plot([1, 2, 3, 4, 5], [10, 10, 50, 40, 10])
         self.canvas = FigureCanvasTkAgg(fig, self.plot_wf)
         self.canvas.draw()
         self.canvas.get_tk_widget().grid(row=0, column=0, padx=20, pady=20, sticky="nsew")

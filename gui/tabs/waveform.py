@@ -32,11 +32,36 @@ def _load_and_plot_waveform(self, file_index: int):
         # or a repeat-TSR early exit on Keysight). Do not print
         # an error so the slider feel is not noisy.
         return
+    # Guard: ``self.ax`` / ``self.canvas`` are created by
+    # ``plot_example_wf`` at app startup. If the slider is
+    # touched before that (or the plot was never initialised),
+    # fall back to a fresh figure inside ``self.plot_wf``.
+    if not hasattr(self, "ax") or not hasattr(self, "canvas") or self.ax is None:
+        if hasattr(self, "plot_wf"):
+            from matplotlib.figure import Figure
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            fig = Figure(figsize=(6, 4), dpi=100)
+            self.ax = fig.add_subplot(111)
+            self.canvas = FigureCanvasTkAgg(fig, self.plot_wf)
+            self.canvas.get_tk_widget().grid(
+                row=0, column=0, padx=20, pady=20, sticky="nsew"
+            )
+        else:
+            return
     data = self.gui_funcs.load_waveform_file(file_path)
     if data.size == 0:
         return
     num_points = int(self.num_points.get()) if self.num_points.get() else len(data)
     self.gui_funcs.plot_waveform(self.ax, data, num_points=num_points)
+    # Force a repaint so the slider visibly moves the plot. The
+    # analysis helper only mutates the axes; the canvas needs to
+    # be told to redraw and Tk has to process the redraw event.
+    try:
+        self.canvas.draw()
+        self.canvas.flush_events()
+        self.update_idletasks()
+    except Exception:
+        pass
 
 
 def _do_dcr(self):
