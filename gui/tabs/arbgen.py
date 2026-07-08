@@ -10,21 +10,25 @@ has its own complete set of controls:
   - Wave type dropdown: Sine, Square, Triangle, Pulse train.
   - Frequency (Hz) text input.
   - Amplitude (Vpp) text input.
-  - Impedance slide switch: HiZ / 50 Ohm.
+  - Impedance slide switch: HiZ / 50 Ohm (sent immediately).
   - Offset (V) text input.
   - Phase (deg) text input.
-  - Update button (sends the six parameters above).
+  - Pulse width (seconds) text input.
+  - Update button (sends the six waveform parameters above).
   - Output enable slide switch (immediate, no Apply gate).
 
 The per-channel widget trees are stored under
 ``self.arbgen_panels[ch]`` (a dict with the wave type, freq,
-amp, offset, phase, impedance, output switch and update
-button). No channel selector: the user works on both
+amp, offset, phase, width, impedance, output switch and
+update button). No channel selector: the user works on both
 channels at once.
 
-The actual SCPI commands are sent through a small adapter in
-``acquisition/arbgen_acquisition.py`` so the GUI does not depend
-on pyvisa directly.
+A small "Connected: Siglent SDG2122X" indicator at the top
+of the tab names the target instrument so the user knows
+which SCPI dialect the buttons speak.
+
+The actual SCPI commands are sent through
+``acquisition/arbgen_acquisition.py``.
 """
 from __future__ import annotations
 
@@ -32,7 +36,9 @@ import customtkinter as ctk
 
 from acquisition.arbgen_acquisition import (
     apply_arbgen_params,
+    set_arbgen_load,
     set_arbgen_output,
+    set_arbgen_pulse_width,
 )
 
 
@@ -48,22 +54,10 @@ WAVEFORM_LABELS = [label for label, _ in WAVEFORM_OPTIONS]
 WAVEFORM_BY_LABEL = dict(WAVEFORM_OPTIONS)
 
 
-def _wip_banner(parent: ctk.CTkFrame) -> ctk.CTkLabel:
-    """Yellow WIP banner. The UI is wired but the SCPI backend
-    is still being filled in. SCPI commands land in
-    ``acquisition/arbgen_acquisition.py``."""
-    return ctk.CTkLabel(
-        parent,
-        text="⚠ WIP — UI ready, SCPI backend pending. "
-             "Siglent SDG2122X is the first target.",
-        font=("", 12, "bold"),
-        text_color="#7a5b00",
-        fg_color="#fff3bf",
-        corner_radius=6,
-        padx=12,
-        pady=8,
-        anchor="w",
-    )
+# Display name shown in the "Connected:" indicator. Updated
+# automatically from the Connect tab when the user connects
+# the AWG; falls back to this string otherwise.
+DEFAULT_CONNECTED_LABEL = "Siglent SDG2122X"
 
 
 def _add_labeled_entry(parent, row: int, label: str, default: str = "",
@@ -136,7 +130,7 @@ def _build_channel_panel(parent: ctk.CTkFrame, channel: str) -> dict:
         values=WAVEFORM_LABELS, default="Sine", width=160,
     )
 
-    # --- Frequency / Amplitude / Offset / Phase text inputs ---------------
+    # --- Frequency / Amplitude / Offset / Phase / Width text inputs -------
     ctk.CTkLabel(panel, text="Parameters", font=("", 12, "bold"),
                  anchor="w").grid(row=3, column=0, columnspan=2, padx=20,
                                   pady=(12, 4), sticky="w")
@@ -144,26 +138,28 @@ def _build_channel_panel(parent: ctk.CTkFrame, channel: str) -> dict:
     amp = _add_labeled_entry(panel, row=5, label="Amplitude (Vpp):", default="1.0")
     offset = _add_labeled_entry(panel, row=6, label="Offset (V):", default="0.0")
     phase = _add_labeled_entry(panel, row=7, label="Phase (deg):", default="0")
+    width = _add_labeled_entry(panel, row=8, label="Pulse width (s):",
+                               default="10E-6")
 
-    # --- Impedance slide switch -------------------------------------------
+    # --- Impedance slide switch (immediate) -------------------------------
     impedance = _make_slide_switch(
-        panel, row=8, label="Impedance:",
+        panel, row=9, label="Impedance:",
         options=["HiZ", "50 Ohm"], default="HiZ",
     )
 
     # --- Update button ----------------------------------------------------
     ctk.CTkLabel(panel, text="Apply", font=("", 12, "bold"),
-                 anchor="w").grid(row=9, column=0, columnspan=2, padx=20,
+                 anchor="w").grid(row=10, column=0, columnspan=2, padx=20,
                                   pady=(12, 4), sticky="w")
     update_button = ctk.CTkButton(panel, text="Update", width=160)
-    update_button.grid(row=10, column=0, columnspan=2, padx=20, pady=(4, 8), sticky="w")
+    update_button.grid(row=11, column=0, columnspan=2, padx=20, pady=(4, 8), sticky="w")
 
     # --- Output enable slide switch (immediate) --------------------------
     ctk.CTkLabel(panel, text="Output", font=("", 12, "bold"),
-                 anchor="w").grid(row=11, column=0, columnspan=2, padx=20,
+                 anchor="w").grid(row=12, column=0, columnspan=2, padx=20,
                                   pady=(8, 4), sticky="w")
     output = _make_slide_switch(
-        panel, row=12, label="On/Off:",
+        panel, row=13, label="On/Off:",
         options=["OFF", "ON"], default="OFF",
     )
 
@@ -175,6 +171,7 @@ def _build_channel_panel(parent: ctk.CTkFrame, channel: str) -> dict:
         "amp": amp,
         "offset": offset,
         "phase": phase,
+        "width": width,
         "impedance": impedance,
         "output": output,
         "update_button": update_button,
@@ -184,19 +181,25 @@ def _build_channel_panel(parent: ctk.CTkFrame, channel: str) -> dict:
 def setting_arbgen(self) -> None:
     """Build the ArbGen tab with two side-by-side channel panels."""
     # WIP suffix in the tab title for clarity.
-    if "ArbGen (WIP)" not in self.tabview._tab_dict:
-        self.tabview.add("ArbGen (WIP)")
-    tab = self.tabview.tab("ArbGen (WIP)")
+    if "ArbGen" not in self.tabview._tab_dict:
+        self.tabview.add("ArbGen")
+    tab = self.tabview.tab("ArbGen")
     # Two equal-weight columns: one per channel.
     tab.grid_columnconfigure(0, weight=1)
     tab.grid_columnconfigure(1, weight=1)
-    tab.grid_rowconfigure(0, weight=1)
+    tab.grid_rowconfigure(0, weight=0)  # connected indicator
+    tab.grid_rowconfigure(1, weight=1)  # channel panels
 
-    # WIP banner spans both columns at the top.
-    banner = _wip_banner(tab)
-    banner.grid(row=0, column=0, columnspan=2, padx=10, pady=(10, 6), sticky="ew")
+    # Connected instrument indicator (top, spans both columns).
+    self.arbgen_connected_label = ctk.CTkLabel(
+        tab, text=f"Connected: {DEFAULT_CONNECTED_LABEL}",
+        font=("", 12, "bold"), text_color="#2ea043", anchor="w",
+    )
+    self.arbgen_connected_label.grid(
+        row=0, column=0, columnspan=2, padx=14, pady=(10, 4), sticky="w",
+    )
 
-    # Two scrollable channel panels, side by side, below the banner.
+    # Two scrollable channel panels, side by side, below the indicator.
     self.arbgen_panels: dict[str, dict] = {}
     for col, channel in enumerate(("CH1", "CH2")):
         panel_frame = ctk.CTkScrollableFrame(tab)
@@ -210,6 +213,18 @@ def setting_arbgen(self) -> None:
         widgets["output"].configure(
             command=lambda value, ch=channel: arbgen_toggle_output(self, ch, value)
         )
+        # Impedance and pulse width are sent immediately too,
+        # so a click on the slide switch hits the scope right
+        # away. Pulse width uses a focus-out binding rather
+        # than a typing keystroke so we do not spam the scope
+        # on every character.
+        widgets["impedance"].configure(
+            command=lambda value, ch=channel: arbgen_change_load(self, ch, value)
+        )
+        widgets["width"].bind(
+            "<FocusOut>",
+            lambda _event, ch=channel: arbgen_change_width(self, ch),
+        )
         self.arbgen_panels[channel] = widgets
 
 
@@ -217,9 +232,7 @@ def setting_arbgen(self) -> None:
 #
 # These read the per-channel control values from
 # ``self.arbgen_panels[channel]`` and delegate the actual SCPI
-# work to ``acquisition.arbgen_acquisition``, which is still a
-# stub. Tests can monkey-patch the acquisition function or
-# assert on the print output.
+# work to ``acquisition.arbgen_acquisition``.
 
 
 def _read_panel_params(self, channel: str) -> dict:
@@ -234,14 +247,15 @@ def _read_panel_params(self, channel: str) -> dict:
         "impedance": panel["impedance"].get(),
         "offset_v": panel["offset"].get(),
         "phase_deg": panel["phase"].get(),
+        "width_s": panel["width"].get(),
     }
 
 
 def arbgen_update(self, channel: str) -> None:
-    """Send the six parameters of ``channel`` to the AWG.
+    """Send the Update-gated parameters of ``channel`` to the AWG.
 
-    Triggered by the channel's Update button. Does not touch
-    the on/off state (that has its own slide switch).
+    Does not touch the on/off or impedance state (those have
+    their own immediate switches).
     """
     params = _read_panel_params(self, channel)
     print(f"[ArbGen] Update CH={params['channel']} "
@@ -250,7 +264,8 @@ def arbgen_update(self, channel: str) -> None:
           f"amp={params['amplitude_vpp']}Vpp "
           f"Z={params['impedance']} "
           f"offset={params['offset_v']}V "
-          f"phase={params['phase_deg']}deg")
+          f"phase={params['phase_deg']}deg "
+          f"width={params['width_s']}s")
     try:
         apply_arbgen_params(params, config=self.config.config)
     except Exception as e:
@@ -258,12 +273,7 @@ def arbgen_update(self, channel: str) -> None:
 
 
 def arbgen_toggle_output(self, channel: str, value: str = None) -> None:
-    """Immediate on/off. Fires whenever the channel's slide switch moves.
-
-    ``value`` is the segmented-button selection ("ON" or "OFF").
-    Falls back to ``self.arbgen_panels[channel]['output'].get()``
-    when not given (e.g. for direct test calls).
-    """
+    """Immediate on/off. Fires whenever the channel's slide switch moves."""
     panel = self.arbgen_panels[channel]
     state = value if value is not None else panel["output"].get()
     print(f"[ArbGen] Output {state} on {channel}")
@@ -272,6 +282,34 @@ def arbgen_toggle_output(self, channel: str, value: str = None) -> None:
                           config=self.config.config)
     except Exception as e:
         print(f"[ArbGen] set_arbgen_output failed: {e}")
+
+
+def arbgen_change_load(self, channel: str, value: str) -> None:
+    """Immediate impedance change. Fires when the slide switch moves."""
+    print(f"[ArbGen] Load {value} on {channel}")
+    try:
+        set_arbgen_load(channel=channel, impedance=value,
+                         config=self.config.config)
+    except Exception as e:
+        print(f"[ArbGen] set_arbgen_load failed: {e}")
+
+
+def arbgen_change_width(self, channel: str) -> None:
+    """Pulse width change, fired on focus-out (so we do not
+    spam the scope on every keystroke)."""
+    panel = self.arbgen_panels[channel]
+    raw = panel["width"].get().strip() or "10E-6"
+    try:
+        width = float(raw)
+    except ValueError:
+        print(f"[ArbGen] Bad pulse width {raw!r}, ignoring.")
+        return
+    print(f"[ArbGen] Pulse width {width:.3E}s on {channel}")
+    try:
+        set_arbgen_pulse_width(channel=channel, width_s=width,
+                                config=self.config.config)
+    except Exception as e:
+        print(f"[ArbGen] set_arbgen_pulse_width failed: {e}")
 
 
 if __name__ == "__main__":

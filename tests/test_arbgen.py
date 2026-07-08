@@ -1,10 +1,11 @@
 """
-Tests for the ArbGen UI scaffold and the SCPI stubs.
+Tests for the ArbGen UI scaffold and the Siglent SDG2122X SCPI
+adapter.
 
-The Siglent SDG2122X is the first AWG we are targeting. The
-SCPI commands are still being finalised with the user, so the
-adapter is a stub that prints the command it would send. These
-tests lock the parameter shape and the on/off state machine.
+The Siglent commands sent to the scope are part of the contract
+the user agreed on, so the adapter is tested end-to-end: a
+parameter dict in, a list of SCPI writes out, with each write
+matching one of the documented commands.
 """
 
 from __future__ import annotations
@@ -18,14 +19,18 @@ import customtkinter as ctk
 
 from gui.tabs import arbgen as arbgen_tab
 from gui.tabs.arbgen import (
+    DEFAULT_CONNECTED_LABEL,
     WAVEFORM_BY_LABEL,
     WAVEFORM_LABELS,
 )
 from acquisition import arbgen_acquisition as arbgen_acq
 from acquisition.arbgen_acquisition import (
     apply_arbgen_params,
+    set_arbgen_load,
     set_arbgen_output,
+    set_arbgen_pulse_width,
 )
+from tests.fake_connection import FakeConnection
 
 
 class WaveformOptionsTests(unittest.TestCase):
@@ -42,12 +47,14 @@ class WaveformOptionsTests(unittest.TestCase):
         self.assertEqual(WAVEFORM_BY_LABEL["Pulse train"], "PULSE")
 
 
-class ApplyArbgenParamsStubTests(unittest.TestCase):
-    """The stub ``apply_arbgen_params`` and ``set_arbgen_output``
-    print the SCPI command they would send. We just assert the
-    output contains the parameter summary so we can replace
-    the stub with real pyvisa calls without breaking the
-    contract."""
+class SiglentScpiCommandTests(unittest.TestCase):
+    """Lock the SCPI command strings the adapter issues.
+
+    These tests use the FakeConnection to capture the writes
+    and assert the exact SCPI tokens. The user reviewed and
+    approved these commands; if you change one here you must
+    also change the documented table.
+    """
 
     def setUp(self) -> None:
         self.params = {
@@ -55,51 +62,77 @@ class ApplyArbgenParamsStubTests(unittest.TestCase):
             "waveform_label": "Sine",
             "waveform_scpi": "SINE",
             "frequency_hz": "1000",
-            "amplitude_vpp": "1.0",
+            "amplitude_vpp": "2.0",
             "impedance": "HiZ",
-            "offset_v": "0.0",
-            "phase_deg": "0",
+            "offset_v": "0.5",
+            "phase_deg": "90",
+            "width_s": "10E-6",
         }
 
-    def test_apply_prints_scpi_summary(self):
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            apply_arbgen_params(self.params)
-        out = buf.getvalue()
-        self.assertIn("SCPI(apply)", out)
-        self.assertIn("channel=CH1", out)
-        self.assertIn("wave=SINE", out)
-        self.assertIn("freq=1000Hz", out)
-        self.assertIn("amp=1.0Vpp", out)
-        self.assertIn("Z=HiZ", out)
+    def test_apply_emits_full_parameter_batch(self):
+        conn = FakeConnection()
+        apply_arbgen_params(self.params, conn=conn)
+        expected = [
+            "C1:BSWV WVTP,SINE",
+            "C1:BSWV FRQ,1000.0",
+            "C1:BSWV AMP,2.0",
+            "C1:BSWV OFST,0.5",
+            "C1:BSWV PHSE,90.0",
+            "C1:BSWV WIDTH,1.000E-05",
+        ]
+        self.assertEqual(conn.writes, expected)
+
+    def test_apply_ch2_uses_c2_prefix(self):
+        conn = FakeConnection()
+        params = dict(self.params, channel="CH2")
+        apply_arbgen_params(params, conn=conn)
+        self.assertTrue(all(w.startswith("C2:") for w in conn.writes),
+                        f"expected C2 prefix, got {conn.writes}")
+
+    def test_apply_handles_missing_or_bad_values(self):
+        conn = FakeConnection()
+        # Empty / non-numeric strings fall back to safe defaults.
+        params = {
+            "channel": "CH1",
+            "waveform_scpi": "SINE",
+            "frequency_hz": "",
+            "amplitude_vpp": "abc",
+            "offset_v": None,
+            "phase_deg": "0",
+            "width_s": "?",
+        }
+        apply_arbgen_params(params, conn=conn)
+        # Defaults: freq=1000, amp=1, offset=0, phase=0, width=1us.
+        joined = " | ".join(conn.writes)
+        self.assertIn("FRQ,1000.0", joined)
+        self.assertIn("AMP,1.0", joined)
+        self.assertIn("OFST,0.0", joined)
+        self.assertIn("PHSE,0.0", joined)
 
     def test_set_output_on(self):
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            set_arbgen_output("CH1", True)
-        out = buf.getvalue()
-        self.assertIn("SCPI(output)", out)
-        self.assertIn("channel=CH1", out)
-        self.assertIn("state=ON", out)
+        conn = FakeConnection()
+        set_arbgen_output("CH1", True, conn=conn)
+        self.assertEqual(conn.writes, ["C1:OUTP ON"])
 
     def test_set_output_off(self):
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            set_arbgen_output("CH2", False)
-        out = buf.getvalue()
-        self.assertIn("channel=CH2", out)
-        self.assertIn("state=OFF", out)
+        conn = FakeConnection()
+        set_arbgen_output("CH2", False, conn=conn)
+        self.assertEqual(conn.writes, ["C2:OUTP OFF"])
 
-    def test_format_params_summary_round_trip(self):
-        # Every value surfaced by the GUI must show up in the
-        # summary so a human can read the terminal output and
-        # know exactly what the user just configured.
-        summary = arbgen_acq._format_params_summary(self.params)
-        # The summary uses short labels (channel=, wave=, freq=, ...).
-        for label_value in (
-            "CH1", "SINE", "1000Hz", "1.0Vpp", "HiZ", "0.0V", "0deg",
-        ):
-            self.assertIn(label_value, summary)
+    def test_set_load_50_ohm(self):
+        conn = FakeConnection()
+        set_arbgen_load("CH1", "50 Ohm", conn=conn)
+        self.assertEqual(conn.writes, ["C1:OUTP LOAD,50"])
+
+    def test_set_load_hiz(self):
+        conn = FakeConnection()
+        set_arbgen_load("CH2", "HiZ", conn=conn)
+        self.assertEqual(conn.writes, ["C2:OUTP LOAD,HZ"])
+
+    def test_set_pulse_width(self):
+        conn = FakeConnection()
+        set_arbgen_pulse_width("CH1", 1.5e-6, conn=conn)
+        self.assertEqual(conn.writes, ["C1:BSWV WIDTH,1.500E-06"])
 
 
 class _StubTabView:
@@ -146,11 +179,11 @@ class SettingArbgenSmokeTest(unittest.TestCase):
         stub = _build_stub(root)
         try:
             arbgen_tab.setting_arbgen(stub)
-            # No more global channel selector.
-            self.assertFalse(hasattr(stub, "arbgen_channel"),
-                             "arbgen_channel should be gone")
-            self.assertFalse(hasattr(stub, "arbgen_waveform"),
-                             "arbgen_waveform should be per-channel")
+            # Connected indicator exists and names the Siglent.
+            self.assertTrue(hasattr(stub, "arbgen_connected_label"))
+            self.assertIn("Siglent", stub.arbgen_connected_label.cget("text"))
+            self.assertIn(DEFAULT_CONNECTED_LABEL,
+                          stub.arbgen_connected_label.cget("text"))
             # The new shape: a dict keyed by channel.
             self.assertTrue(hasattr(stub, "arbgen_panels"))
             self.assertEqual(set(stub.arbgen_panels.keys()),
@@ -158,7 +191,7 @@ class SettingArbgenSmokeTest(unittest.TestCase):
             for ch in ("CH1", "CH2"):
                 panel = stub.arbgen_panels[ch]
                 for attr in ("waveform", "freq", "amp", "offset",
-                             "phase", "impedance", "output",
+                             "phase", "width", "impedance", "output",
                              "update_button"):
                     self.assertIn(attr, panel,
                                   f"CH{ch} panel missing {attr!r}")
@@ -195,6 +228,7 @@ class ArbgenActionHandlersTests(unittest.TestCase):
         panel["amp"].insert(0, "1.0")
         panel["offset"].insert(0, "0.0")
         panel["phase"].insert(0, "0")
+        panel["width"].insert(0, "10E-6")
 
     def test_arbgen_update_ch1_prints_summary(self):
         self._fill("CH1")
@@ -208,6 +242,7 @@ class ArbgenActionHandlersTests(unittest.TestCase):
         self.assertIn("CH1", out)
         self.assertIn("SINE", out)
         self.assertIn("1000", out)
+        self.assertIn("10E-6", out)
 
     def test_arbgen_update_ch2_isolated_from_ch1(self):
         # Edit CH1 only; pressing CH2's Update should still
@@ -222,8 +257,6 @@ class ArbgenActionHandlersTests(unittest.TestCase):
         # CH2's freq entry was never typed into, so the
         # summary should not contain "1000" for the CH2 call.
         self.assertIn("CH2", out)
-        # Each panel's call prints its own channel; the CH1
-        # values (1000) should not appear in this output.
         self.assertNotIn("freq=1000Hz", out)
 
     def test_arbgen_toggle_output_per_channel(self):
@@ -236,6 +269,30 @@ class ArbgenActionHandlersTests(unittest.TestCase):
         out = buf.getvalue()
         self.assertIn("Output ON on CH1", out)
         self.assertIn("Output OFF on CH2", out)
+
+    def test_arbgen_change_load_delegates_to_adapter(self):
+        with patch("gui.tabs.arbgen.set_arbgen_load") as mock_set:
+            arbgen_tab.arbgen_change_load(self.stub, "CH1", "50 Ohm")
+            mock_set.assert_called_once()
+            # The adapter is invoked with kwargs only.
+            kwargs = mock_set.call_args.kwargs
+            self.assertEqual(kwargs["channel"], "CH1")
+            self.assertEqual(kwargs["impedance"], "50 Ohm")
+
+    def test_arbgen_change_width_validates_input(self):
+        with patch("gui.tabs.arbgen.set_arbgen_pulse_width") as mock_set:
+            # Bad width: ignored.
+            self.stub.arbgen_panels["CH1"]["width"].insert(0, "abc")
+            arbgen_tab.arbgen_change_width(self.stub, "CH1")
+            mock_set.assert_not_called()
+
+            # Good width: forwarded.
+            self.stub.arbgen_panels["CH1"]["width"].delete(0, "end")
+            self.stub.arbgen_panels["CH1"]["width"].insert(0, "1.5E-6")
+            arbgen_tab.arbgen_change_width(self.stub, "CH1")
+            mock_set.assert_called_once()
+            self.assertAlmostEqual(mock_set.call_args.kwargs["width_s"],
+                                    1.5e-6, places=12)
 
 
 if __name__ == "__main__":
