@@ -7,6 +7,11 @@ Tests for the Connect-tab machinery:
   and returns the trimmed response.
 - acquisition.connection.connect_and_identify returns (conn, idn) with
   the connection still open and the IDN string.
+- gui.tabs.connect.DEFAULT_CARDS is a list of 4-tuples
+  ``(id, name, description, dialect)`` and the Connected-panel
+  iteration unpacks them with the 4-element shape.
+- gui.tabs.connect.parse_idn_model returns the chunk between the
+  first and second comma of a SCPI ``*IDN?`` response.
 """
 
 from __future__ import annotations
@@ -146,6 +151,69 @@ class NormalizeAddressTests(unittest.TestCase):
                                           default_prefix="USB",
                                           default_suffix="MYDEV"),
                          "USB::192.168.0.32::MYDEV")
+
+
+class DefaultCardsShapeTests(unittest.TestCase):
+    """``DEFAULT_CARDS`` is iterated in ``_refresh_connected_list`` to
+    decide the rendering order of the Connected panel. The iteration
+    must unpack the 4-tuple shape
+    ``(instrument_id, short_name, description, scope_dialect)``; a
+    regression to a 3-element unpack used to silently fall back to
+    the static card name and the user saw no model from ``*IDN?``."""
+
+    def test_default_cards_are_4_tuples(self):
+        from gui.tabs.connect import DEFAULT_CARDS
+        for entry in DEFAULT_CARDS:
+            self.assertEqual(
+                len(entry), 4,
+                f"DEFAULT_CARDS entry {entry!r} must have 4 elements, "
+                f"got {len(entry)}"
+            )
+            instrument_id, short_name, description, dialect = entry
+            self.assertTrue(instrument_id, "instrument_id must be non-empty")
+            self.assertTrue(short_name, "short_name must be non-empty")
+            self.assertTrue(description, "description must be non-empty")
+            # dialect is None for non-scope instruments, otherwise a string.
+            self.assertTrue(
+                dialect is None or isinstance(dialect, str),
+                f"dialect must be None or str, got {dialect!r}",
+            )
+
+    def test_4tuple_unpacking_does_not_raise(self):
+        """Mirror the exact comprehension the Connected panel uses."""
+        from gui.tabs.connect import DEFAULT_CARDS
+        # If this comprehension raises, the panel falls back to a
+        # lambda that returns "" for parse_idn_model and the user
+        # never sees the model field of their *IDN? response.
+        try:
+            ordered_ids = [iid for iid, _, _, _ in DEFAULT_CARDS]
+        except ValueError as e:
+            self.fail(f"4-tuple unpacking raised: {e}")
+        self.assertEqual(len(ordered_ids), len(DEFAULT_CARDS))
+        self.assertIn("scope1", ordered_ids)
+        self.assertIn("scope2", ordered_ids)
+        self.assertIn("scope3", ordered_ids)
+
+
+class ParseIdnModelTests(unittest.TestCase):
+    """``parse_idn_model`` returns the chunk between the first and
+    second comma of a ``*IDN?`` response (manufacturer, model, ...)."""
+
+    def test_returns_model_field(self):
+        from gui.tabs.connect import parse_idn_model
+        self.assertEqual(parse_idn_model("Rohde&Schwarz,RTA4004,1234,01.00"),
+                         "RTA4004")
+        self.assertEqual(parse_idn_model("Keysight Technologies,DSOS054A,..."),
+                         "DSOS054A")
+
+    def test_empty_inputs(self):
+        from gui.tabs.connect import parse_idn_model
+        self.assertEqual(parse_idn_model(""), "")
+        self.assertEqual(parse_idn_model("no_commas_here"), "")
+
+    def test_strips_whitespace(self):
+        from gui.tabs.connect import parse_idn_model
+        self.assertEqual(parse_idn_model("Acme, Model-X ,sn,fw"), "Model-X")
 
 
 if __name__ == "__main__":

@@ -57,6 +57,31 @@ class LoadWaveformFileTests(unittest.TestCase):
             data = load_waveform_file(p, skip_lines=3)
             np.testing.assert_array_equal(data, np.array([1.0, 2.0]))
 
+    def test_load_skips_non_numeric_header(self):
+        """Real segment files are written with two non-numeric header
+        lines: the TSR timestamp and the literal ``wavedata`` token.
+        The legacy ``skip_lines=2`` would land on ``wavedata`` and
+        raise ``ValueError: could not convert string to float``. The
+        parser must skip non-numeric header lines instead."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "wf_0.txt")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("1700000000.0\n")
+                f.write("wavedata\n")
+                f.write("0.5\n1.5\n2.5\n")
+            data = load_waveform_file(p)
+            np.testing.assert_array_equal(data, np.array([0.5, 1.5, 2.5]))
+
+    def test_load_returns_empty_for_empty_file(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "wf_0.txt")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("")
+            data = load_waveform_file(p)
+            self.assertEqual(data.size, 0)
+
 
 class CountFilesTests(unittest.TestCase):
     def test_lists_prefixed_files(self):

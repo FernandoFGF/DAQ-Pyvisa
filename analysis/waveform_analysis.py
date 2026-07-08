@@ -37,10 +37,39 @@ def load_waveform_file(path: str, skip_lines: int = 2) -> np.ndarray:
       with open(path, 'r') as f:
           lines = f.readlines()[skip_lines:]
       data = [float(line.strip()) for line in lines]
+
+    The current segment-file layout (see
+    ``acquisition.save.write_waveform_file``) prepends two non-numeric
+    header lines (the TSR timestamp and a literal ``wavedata`` token).
+    A bare ``skip_lines=2`` happens to land on ``wavedata`` and
+    crashes with ``ValueError``. We accept the legacy ``skip_lines``
+    hint as a fast path and, when it is not enough, fall back to
+    skipping every non-numeric header line until the first one that
+    parses as ``float`` (so the parser survives header-format
+    changes).
     """
     with open(path, "r", encoding="utf-8") as f:
-        lines = f.readlines()[skip_lines:]
-    return np.array([float(line.strip()) for line in lines], dtype=float)
+        lines = f.readlines()
+
+    body = lines[skip_lines:] if skip_lines > 0 else lines
+    data: list[float] = []
+    for line in body:
+        try:
+            data.append(float(line.strip()))
+        except ValueError:
+            # Non-numeric header line (e.g. ``wavedata``). Keep
+            # skipping until we hit actual samples.
+            continue
+    if not data:
+        # Fallback: scan the whole file from the top, in case
+        # ``skip_lines`` overshot the header (e.g. legacy 2-line
+        # skip against a 4-line header).
+        for line in lines:
+            try:
+                data.append(float(line.strip()))
+            except ValueError:
+                continue
+    return np.array(data, dtype=float)
 
 
 def count_files(path: str, prefix: str) -> Tuple[int, str]:

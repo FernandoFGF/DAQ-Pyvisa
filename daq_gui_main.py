@@ -334,10 +334,16 @@ try:
             cards = getattr(self, "connect_cards", {}) or {}
             try:
                 from gui.tabs.connect import DEFAULT_CARDS, parse_idn_model
-                ordered_ids = [iid for iid, _, _ in DEFAULT_CARDS]
+                # ``DEFAULT_CARDS`` is a list of 4-tuples
+                # ``(instrument_id, short_name, description, scope_dialect)``.
+                ordered_ids = [iid for iid, _, _, _ in DEFAULT_CARDS]
             except Exception:
                 ordered_ids = list(cards.keys())
-                parse_idn_model = lambda s: ""  # noqa: E731
+                try:
+                    from gui.tabs.connect import parse_idn_model as _parse
+                except Exception:
+                    _parse = lambda s: ""  # noqa: E731
+                parse_idn_model = _parse
             for iid in ordered_ids:
                 card = cards.get(iid)
                 if not card or card.get("connection") is None:
