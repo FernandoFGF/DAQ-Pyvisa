@@ -87,22 +87,6 @@ def normalize_address(raw: str, default_prefix: str = "TCPIP",
     return text
 
 
-def _address_hint_text(name: str) -> str:
-    """Return the small grey hint shown under the IP entry.
-
-    For scopes known not to enable VXI-11 RPC by default, the hint
-    tells the user to type the full ``TCPIP::<ip>::5025::SOCKET``
-    address instead of the auto-wrapped ``::INSTR`` form.
-    """
-    if name == "RTO":
-        return ("RTO does not enable VXI-11 by default. Type the full "
-                "address TCPIP::<ip>::5025::SOCKET to use raw-TCP SCPI.")
-    if name == "RTA":
-        return ("RTA accepts both VXI-11 (default ::INSTR) and raw "
-                "TCP (::5025::SOCKET).")
-    return "Bare IPs are auto-wrapped as TCPIP::<ip>::INSTR."
-
-
 def _build_card(parent: ctk.CTkFrame, self, instrument_id: str, name: str,
                 description: str) -> dict:
     """Build a single instrument card. Returns a dict of widgets to keep."""
@@ -130,17 +114,6 @@ def _build_card(parent: ctk.CTkFrame, self, instrument_id: str, name: str,
                               command=lambda: _save_address(self, instrument_id,
                                                             addr_entry.get()))
     save_btn.grid(row=0, column=2)
-
-    # Small grey hint under the address entry. For RTO scopes this
-    # is critical: ``TCPIP::<ip>::INSTR`` triggers a VXI-11 RPC
-    # probe that fails on RTO by default; the user must type the
-    # full SOCKET form or pick the prefix hint.
-    hint_text = _address_hint_text(name)
-    addr_hint = ctk.CTkLabel(addr_frame, text=hint_text, font=("", 10),
-                             text_color="#888", anchor="w", wraplength=320,
-                             justify="left")
-    addr_hint.grid(row=1, column=0, columnspan=3, padx=(76, 0), pady=(2, 0),
-                   sticky="ew")
 
     # When the user leaves the entry or presses Enter, rewrite the
     # contents as a fully-qualified VISA address.

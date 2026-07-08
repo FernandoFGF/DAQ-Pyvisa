@@ -4,14 +4,8 @@ instruments:
     address: TCPIP::192.168.100.100::INSTR
     timeout: 20000
   scope2:
-    # R&S RTO scopes do not enable VXI-11 (RPC) by default; the
-    # ``::5025::SOCKET`` suffix forces the raw-TCP SCPI backend on
-    # port 5025, which is what the RTO speaks out of the box.
-    # Using ``::INSTR`` here triggers a "can't connect to server"
-    # RPC error during the port-mapper probe even when the
-    # network path is fine.
     name: RTO
-    address: TCPIP::192.168.100.105::5025::SOCKET
+    address: TCPIP::192.168.100.105::INSTR
     timeout: 20000
   scope3:
     name: KEY
