@@ -147,7 +147,12 @@ def setting_wf(self):
     self.ch4Wf.grid(row=1, column=1, padx=(5, 10), pady=(5, 10))
 
     self.start_buttonWf = ctk.CTkButton(self.optionsWf, text="Start", command=self.start_wf, state="disabled")
-    self.start_buttonWf.grid(row=10, column=0, padx=20, pady=(20,50), columnspan=2, sticky="s")
+    self.start_buttonWf.grid(row=10, column=0, padx=20, pady=(20,5), columnspan=2, sticky="s")
+
+    self.stop_buttonWf = ctk.CTkButton(self.optionsWf, text="Stop",
+                                       command=self.stop_wf, state="disabled")
+    self.stop_buttonWf.grid(row=11, column=0, padx=20, pady=(5, 50),
+                            columnspan=2, sticky="s")
 
     self.plot_wf = ctk.CTkFrame(self.tabview.tab("Waveform"))
     self.plot_wf.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")

@@ -135,6 +135,7 @@ class DAQGUIFunctions:
                             name: str, save_root: str,
                             instrument_id: Optional[str] = None,
                             results_callback: Optional[Callable[[dict], None]] = None,
+                            progress_callback: Optional[Callable[[int, int], None]] = None,
                             error_callback: Optional[Callable[[str], None]] = None) -> None:
         """Run a waveform acquisition in a thread.
 
@@ -142,6 +143,10 @@ class DAQGUIFunctions:
         ``instrument_id`` is the actual VISA resource id
         (``"scope1"``/``"scope2"``/``"scope3"``); falls back to
         ``f"scope{scope}"`` when omitted.
+
+        ``progress_callback`` is called once per captured segment as
+        ``(index_1based, total_segments)`` so the GUI can print a
+        progress line. Spectrum has the same plumbing.
         """
         from acquisition.waveform_acquisition import WaveformAcquisition
 
@@ -152,6 +157,16 @@ class DAQGUIFunctions:
 
         actual_instrument_id = instrument_id or f"scope{scope}"
 
+        def _on_progress(i: int, n: int) -> None:
+            if progress_callback is not None:
+                try:
+                    progress_callback(i, n)
+                except Exception as e:
+                    print(f"Error in waveform progress callback: {e}")
+            if n > 0:
+                pct = float(i) / float(n) * 100.0
+                self._notify_gui("progress", pct)
+
         def _run():
             try:
                 acq = WaveformAcquisition(scope_id=scope, channel=channel,
@@ -160,7 +175,7 @@ class DAQGUIFunctions:
                                           save_root=save_root, name=name,
                                           config=self.config.config)
                 self._waveform_acq = acq
-                result = acq.run()
+                result = acq.run(progress_callback=_on_progress)
                 payload = {
                     "path_d": result.path_d,
                     "time_base": result.time_base,
@@ -180,6 +195,19 @@ class DAQGUIFunctions:
         self.threads_active["waveform"] = True
         self._waveform_acq = None
         threading.Thread(target=_run, daemon=True).start()
+
+    def get_running_waveform(self):
+        """Return the live ``WaveformAcquisition`` instance, or ``None``.
+
+        Lets the GUI ask the worker to stop cooperatively without
+        poking into facade internals.
+        """
+        acq = getattr(self, "_waveform_acq", None)
+        if acq is None:
+            return None
+        if not self.threads_active.get("waveform", False):
+            return None
+        return acq
 
     # --- Persistence (delegates to acquisition.save) ---------------------
 

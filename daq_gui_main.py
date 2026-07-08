@@ -682,17 +682,28 @@ try:
             """
             time_seconds_raw = self.timeWf.get()
             time_seconds = float(time_seconds_raw) if time_seconds_raw else 0.0
-            name = self.save_entry.get()
-            if not name:
-                print("Introduce un nombre al fichero")
-                return
             active = self.get_active_scope()
             if active is None:
                 print("Connect an oscilloscope in the Connect tab first.")
                 return
             scope, instrument_id, _name = active
+            # If the user did not provide a file name, fall back to a
+            # default like "default-2026-07-08-10-55-12" so the
+            # "Open folder" button always has something to look at
+            # and the eventual save step never fails on a missing
+            # name. Mirrors the spectrum flow.
+            if not self.save_entry.get().strip():
+                default_name = "default-" + time.strftime("%Y-%m-%d-%H-%M-%S")
+                self.save_entry.delete(0, "end")
+                self.save_entry.insert(0, default_name)
+                print(f"[Waveform] No file name set, using '{default_name}'.")
+            name = self.save_entry.get()
             channel = self.selected_channelWf.get()
             save_root = str(lm.get_path("Waveform"))
+
+            def _on_progress(i, n):
+                pct = (float(i) / float(n) * 100.0) if n else 0.0
+                print(f"[Waveform] progress: {i}/{n} segments ({pct:.1f}%)")
 
             def _on_results(payload):
                 # Update GUI state with the captured waveform.
@@ -720,10 +731,17 @@ try:
                 print("Finish waveform.")
 
             def _on_error(msg):
-                print("Error:", msg)
+                print("[Waveform] Error:", msg)
 
             def _on_finish():
                 lm.beep()
+                if not getattr(self, "_waveform_user_stopped", False):
+                    self.start_buttonWf.configure(state="normal")
+                self.stop_buttonWf.configure(state="disabled")
+
+            self._waveform_user_stopped = False
+            self.start_buttonWf.configure(state="disabled")
+            self.stop_buttonWf.configure(state="normal")
 
             self.gui_funcs.start_waveform_full(
                 scope=scope,
@@ -732,10 +750,28 @@ try:
                 name=name,
                 save_root=save_root,
                 instrument_id=instrument_id,
+                progress_callback=lambda i, n: self.after(0, lambda: _on_progress(i, n)),
                 results_callback=lambda p: self.after(0, lambda: (_on_results(p), _on_finish())),
                 error_callback=lambda m: self.after(0, lambda: (_on_error(m), _on_finish())),
             )
-        
+
+        def stop_wf(self):
+            """Request a cooperative stop of the running waveform worker.
+
+            The adapter checks ``_stop_requested`` between segments, so
+            the worker will finish its current iteration and then exit.
+            Start stays disabled until the worker has actually returned,
+            so we don't risk starting a second acquisition on top of
+            the first.
+            """
+            acq = self.gui_funcs.get_running_waveform()
+            if acq is None:
+                print("[Waveform] No hay medición en curso.")
+                return
+            self._waveform_user_stopped = True
+            print("[Waveform] Solicitando parada tras el segmento actual...")
+            acq.request_stop()
+
         def on_closing(self):
             """
             Handle application closing.

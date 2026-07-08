@@ -76,6 +76,19 @@ class WaveformAcquisition:
         # ``f"scope{scope_id}"`` mapping for backwards compatibility.
         self.instrument_id = instrument_id
         self._conn: Optional[InstrumentConnection] = None
+        # Cooperative cancellation: set by ``request_stop()`` and
+        # checked at the top of each per-segment loop. Mirrors the
+        # pattern in ``SpectrumAcquisition``.
+        self._stop_requested = False
+
+    def request_stop(self) -> None:
+        """Ask the running acquisition to stop after the current segment.
+
+        Best-effort: the worker checks ``_stop_requested`` at the
+        start of each segment, so a Stop request during a blocking
+        ``conn.query`` will only take effect once that query returns.
+        """
+        self._stop_requested = True
 
     def set_connection(self, conn: InstrumentConnection) -> None:
         self._conn = conn
@@ -170,6 +183,10 @@ class WaveformAcquisition:
         prev_tsr: Optional[str] = None
         y_data = np.array([], dtype=float)
         for i in range(n_segments):
+            if self._stop_requested:
+                print(f"[Waveform] {self.instrument_id or f'scope{self.scope_id}'} "
+                      f"stop requested at segment {i}.")
+                break
             conn.write(ds.selectCurrKey(n_segments, i + 1))
             self._waiting(conn)
             raw = conn.query(ds.waveformkey)
@@ -207,6 +224,10 @@ class WaveformAcquisition:
             conn.write(ds.openHist(self.scope_id))
         y_data = np.array([], dtype=float)
         for i in range(n_segments):
+            if self._stop_requested:
+                print(f"[Waveform] {self.instrument_id or f'scope{self.scope_id}'} "
+                      f"stop requested at segment {i}.")
+                break
             conn.write(ds.selectCurr(n_segments, i))
             y_aux = conn.query(ds.waveform(self.channel))
             y_data = np.array(

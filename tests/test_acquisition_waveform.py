@@ -41,7 +41,11 @@ class RtaWaveformTests(unittest.TestCase):
                 save_root=tmp, name="run",
             )
             acq.set_connection(conn)
-            result = acq.run()
+
+            # Progress callback is invoked once per captured segment.
+            progress_calls: list = []
+            result = acq.run(progress_callback=lambda i, n: progress_calls.append((i, n)))
+            self.assertEqual(progress_calls, [(1, 3), (2, 3), (3, 3)])
 
             # Three files were written
             self.assertTrue(os.path.isdir(result.path_d))
@@ -149,6 +153,76 @@ class KeyWaveformTests(unittest.TestCase):
             # selectCurrKey was used to index each attempted segment.
             self.assertIn(ds.selectCurrKey(5, 1), conn.writes)
             self.assertIn(ds.selectCurrKey(5, 2), conn.writes)
+
+
+class WaveformCooperativeStopTests(unittest.TestCase):
+    """``request_stop()`` must cause the per-segment loop to exit
+    cleanly between iterations, not mid-segment."""
+
+    def test_request_stop_short_circuits_run(self):
+        from acquisition.waveform_acquisition import (
+            WaveformAcquisition,
+            SCOPE_RTA,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            # 5 segments. After 2, the worker requests a stop. We
+            # expect only 2 files written.
+            fake = FakeConnection()
+            fake.set_response(ds.numCounts, "5")
+            fake.set_default_response("0.1,0.2")
+            fake.set_response_prefix(ds.tsr, "1700000000.0")
+            fake.set_response(":TIM:SCAL?", "0.001")
+
+            acq = WaveformAcquisition(
+                scope_id=SCOPE_RTA, channel="1", time_seconds=0,
+                save_root=tmp, name="stoprun",
+            )
+
+            # Wrap the query method so we can trigger the stop after
+            # 2 segments have been read. The fake returns the same
+            # TSR every time (no repeat-TSR short-circuit), so the
+            # loop only exits via the cooperative stop.
+            call_counter = {"segments": 0}
+            original_query = fake.query
+
+            def counting_query(cmd):
+                r = original_query(cmd)
+                if cmd.startswith(ds.waveform("1")):
+                    call_counter["segments"] += 1
+                    if call_counter["segments"] >= 2:
+                        acq.request_stop()
+                return r
+
+            fake.query = counting_query  # type: ignore[assignment]
+            acq.set_connection(fake)
+            result = acq.run()
+
+            self.assertEqual(call_counter["segments"], 2)
+            # Only the first two segment files should be on disk.
+            files = [f for f in os.listdir(result.path_d) if f.startswith("stoprun_")]
+            self.assertEqual(len(files), 2)
+
+    def test_run_completes_normally_without_stop(self):
+        from acquisition.waveform_acquisition import (
+            WaveformAcquisition,
+            SCOPE_RTA,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = FakeConnection()
+            fake.set_response(ds.numCounts, "3")
+            fake.set_default_response("0.1,0.2,0.3,0.4")
+            fake.set_response_prefix(ds.tsr, "1700000000.0")
+            fake.set_response(":TIM:SCAL?", "0.001")
+
+            acq = WaveformAcquisition(
+                scope_id=SCOPE_RTA, channel="1", time_seconds=0,
+                save_root=tmp, name="normalrun",
+            )
+            acq.set_connection(fake)
+            result = acq.run()
+            self.assertEqual(len(result.y_data), 4)
+            files = [f for f in os.listdir(result.path_d) if f.startswith("normalrun_")]
+            self.assertEqual(len(files), 3)
 
 
 if __name__ == "__main__":
