@@ -17,6 +17,8 @@ id and the real instrument id through
 import customtkinter as ctk
 import os
 
+from gui.instructions import build_instructions_icon as _build_instructions_icon
+
 
 def _load_and_plot_waveform(self, file_index: int):
     path = str(self.path_wf.get())
@@ -25,9 +27,14 @@ def _load_and_plot_waveform(self, file_index: int):
         return
     file_path = os.path.join(path, f"{name}_{int(round(file_index))}.txt")
     if not os.path.exists(file_path):
-        print(f"Fichero no encontrado: {file_path}")
+        # Silent no-op: the user may have asked for an index past
+        # the last written segment (e.g. after a cooperative stop
+        # or a repeat-TSR early exit on Keysight). Do not print
+        # an error so the slider feel is not noisy.
         return
     data = self.gui_funcs.load_waveform_file(file_path)
+    if data.size == 0:
+        return
     num_points = int(self.num_points.get()) if self.num_points.get() else len(data)
     self.gui_funcs.plot_waveform(self.ax, data, num_points=num_points)
 
@@ -71,7 +78,14 @@ def _increase_slider_value(self):
     count, _ = self.gui_funcs.count_waveform_files(
         str(self.path_wf.get()), self.save_entry.get()
     )
-    if current < count:
+    # ``count`` is the number of segment files actually on disk.
+    # The slider's last valid index is ``count - 1`` (we count
+    # from 0), so the upper bound for stepping is ``count - 2``:
+    # pressing + at index N moves to N+1 which must still be
+    # strictly less than ``count - 1``.
+    if count <= 1:
+        return
+    if current < count - 1:
         new = current + 1
         self.slider_wf.set(new)
         _load_and_plot_waveform(self, new)
@@ -151,8 +165,14 @@ def setting_wf(self):
 
     self.stop_buttonWf = ctk.CTkButton(self.optionsWf, text="Stop",
                                        command=self.stop_wf, state="disabled")
-    self.stop_buttonWf.grid(row=11, column=0, padx=20, pady=(5, 50),
+    self.stop_buttonWf.grid(row=11, column=0, padx=20, pady=(5,5),
                             columnspan=2, sticky="s")
+
+    # Botón circular de "i" con las instrucciones del scope actual.
+    self.instructionsWf_button = _build_instructions_icon(
+        self.optionsWf, "Waveform",
+    )
+    self.instructionsWf_button.grid(row=12, column=1, padx=(0, 8), pady=(5, 50), sticky="se")
 
     self.plot_wf = ctk.CTkFrame(self.tabview.tab("Waveform"))
     self.plot_wf.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")

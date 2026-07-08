@@ -96,6 +96,27 @@ class CountFilesTests(unittest.TestCase):
             self.assertEqual(count, 3)
             self.assertEqual(time_line.strip(), "-1.0")
 
+    def test_missing_zero_file_returns_zero_time(self):
+        """When ``<prefix>_0.txt`` is missing (e.g. cooperative stop
+        before the first segment finished writing), ``count_files``
+        used to crash with FileNotFoundError. It now returns the
+        actual count and a sentinel timestamp so DCR degrades to a
+        ZeroDivisionError instead."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            # Files 1, 2, 3 exist but 0 does not (cooperative stop).
+            for i in range(1, 4):
+                with open(os.path.join(tmp, f"run_{i}.txt"), "w", encoding="utf-8") as f:
+                    f.write("-1.0\n")
+            count, time_line = count_files(tmp, "run")
+            self.assertEqual(count, 3)
+            self.assertEqual(time_line, "0")
+
+    def test_missing_directory_returns_zero(self):
+        count, time_line = count_files("/nonexistent/path", "run")
+        self.assertEqual(count, 0)
+        self.assertEqual(time_line, "0")
+
 
 class MakeTimeAxisTests(unittest.TestCase):
     def test_default(self):

@@ -181,12 +181,7 @@ try:
             self.print_button = customtkinter.CTkButton(self.option_frame)
             self.print_button.grid(row=2, column=0, padx=10, pady=10)
             self.folder_button = customtkinter.CTkButton(self.option_frame)
-            self.folder_button.grid(row=3, column=0, padx=10, pady=(10,10))
-            self.instructions_button = customtkinter.CTkButton(
-                self.option_frame, text="Instructions",
-                command=self.show_instructions,
-            )
-            self.instructions_button.grid(row=4, column=0, padx=10, pady=(0, 20))
+            self.folder_button.grid(row=3, column=0, padx=10, pady=(10,20))
 
             # Instrument connection buttons — superseded by the Connect tab.
             # The four buttons (Connect All / Connect SMU / Connect Scope /
@@ -776,43 +771,6 @@ try:
             self._waveform_user_stopped = True
             print("[Waveform] Solicitando parada tras el segmento actual...")
             acq.request_stop()
-
-        def show_instructions(self):
-            """Open a floating, movable window with the per-scope,
-            per-function instructions for the active tab."""
-            import customtkinter as ctk
-            from gui.instructions import load_instructions
-
-            function = self.tabview.get()
-            active = self.get_active_scope()
-            scope = active[2] if active is not None else "(no scope connected)"
-            lines = load_instructions(function, scope)
-
-            # Non-modal toplevel: the user can drag it around the
-            # screen and keep the main window interactive. We do not
-            # use grab_set() so the main app keeps responding to
-            # clicks.
-            win = ctk.CTkToplevel(self)
-            title = f"Instructions - {function} - {scope}"
-            win.title(title)
-            win.geometry("520x420")
-            try:
-                win.transient(self)
-            except Exception:
-                pass
-
-            header = ctk.CTkLabel(
-                win, text=title, font=("", 14, "bold"), anchor="w",
-            )
-            header.pack(padx=12, pady=(12, 4), fill="x")
-
-            body = ctk.CTkTextbox(win, wrap="word", activate_scrollbars=True)
-            body.pack(padx=12, pady=(0, 12), fill="both", expand=True)
-            body.insert("0.0", "\n".join(lines))
-            body.configure(state="disabled")
-
-            close = ctk.CTkButton(win, text="Close", command=win.destroy)
-            close.pack(padx=12, pady=(0, 12), anchor="e")
 
         def on_closing(self):
             """

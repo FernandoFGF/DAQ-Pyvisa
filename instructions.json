@@ -1,13 +1,23 @@
 {
   "spectrum": {
     "rta": [
-      "Spectrum - RTA (R&S RTA4000 series)",
-      "1. Press 'Connect' on the RTA card in the Connect tab.",
-      "2. Open the Spectrum tab and set 'Set entries' to the number of samples.",
-      "3. Pick the channel (Ch1..Ch4).",
-      "4. Press Start. The adapter issues CURSor1:SOURce + *OPC? + CURSor1:Y1Position? / Y2Position? per sample.",
-      "5. The live histogram redraws every 100 samples.",
-      "6. Open the Analysis tab and press 'Finder peaks' to overlay the peaks and read the list of peak positions."
+      "Configuración de la función matemática F(x)
+
+Pulsa el botón Math.
+Activa M1 (Estado = ON).
+Configura:
+Fuente: C1
+Operación: Integral
+Unidad: Vs
+
+Regresa a la pantalla principal.
+Configuración de los cursores
+
+Pulsa el botón Cursor.
+En Fuente, selecciona M1.
+En Tipo, selecciona Marcador V.
+Activa Sobre traza.
+Mueve el marcador con el mando giratorio para recorrer la función matemática"
     ],
     "rto": [
       "Spectrum - RTO (R&S RTO2000 series)",

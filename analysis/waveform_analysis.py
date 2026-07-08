@@ -78,7 +78,10 @@ def count_files(path: str, prefix: str) -> Tuple[int, str]:
     line of `<path>/<prefix>_0.txt` (used to extract the timestamp that
     feeds calculate_dcr).
 
-    Mirrors the legacy daq_gui_func.count_files.
+    Mirrors the legacy daq_gui_func.count_files but tolerates a
+    missing ``<prefix>_0.txt`` (returns ``"0"`` as the timestamp so
+    the DCR calculation degrades to a ZeroDivisionError instead of
+    a FileNotFoundError).
     """
     import os
 
@@ -88,8 +91,13 @@ def count_files(path: str, prefix: str) -> Tuple[int, str]:
     files = os.listdir(path)
     count = sum(1 for f in files if f.startswith(prefix + "_"))
     first = os.path.join(path, f"{prefix}_0.txt")
-    with open(first, "r", encoding="utf-8") as fh:
-        time_line = fh.readline()
+    if not os.path.isfile(first):
+        return count, "0"
+    try:
+        with open(first, "r", encoding="utf-8") as fh:
+            time_line = fh.readline()
+    except OSError:
+        time_line = "0"
     return count, time_line
 
 

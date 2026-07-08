@@ -16,6 +16,8 @@ id and the real instrument id through
 """
 import customtkinter as ctk
 
+from gui.instructions import build_instructions_icon as _build_instructions_icon
+
 
 def _do_finding_peaks(self):
     from analysis.spectrum_analysis import (
@@ -157,7 +159,13 @@ def setting_spec(self):
 
     # Crear el botón de stop
     self.stopSpec_button = ctk.CTkButton(self.optionSpectrum, text="Stop", command=self.stop_spectrum, state="disable")
-    self.stopSpec_button.grid(row=11, column=0, padx=10, pady=(5,50), columnspan=2, sticky="s")
+    self.stopSpec_button.grid(row=11, column=0, padx=10, pady=(5,5), columnspan=2, sticky="s")
+
+    # Botón circular de "i" con las instrucciones del scope actual.
+    self.instructionsSpec_button = _build_instructions_icon(
+        self.optionSpectrum, "Spectrum",
+    )
+    self.instructionsSpec_button.grid(row=12, column=1, padx=(0, 8), pady=(5, 50), sticky="se")
 
     # Crear el segundo contenedor (derecha)
     self.liveplot = ctk.CTkFrame(self.tabview.tab("Spectrum"))
