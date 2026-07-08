@@ -750,9 +750,9 @@ try:
                 name=name,
                 save_root=save_root,
                 instrument_id=instrument_id,
-                progress_callback=lambda i, n: self.after(0, lambda: _on_progress(i, n)),
-                results_callback=lambda p: self.after(0, lambda: (_on_results(p), _on_finish())),
-                error_callback=lambda m: self.after(0, lambda: (_on_error(m), _on_finish())),
+                progress_callback=lambda i, n: self.after(0, lambda i=i, n=n: _on_progress(i, n)),
+                results_callback=lambda p: self.after(0, lambda p=p: (_on_results(p), _on_finish())),
+                error_callback=lambda m: self.after(0, lambda m=m: (_on_error(m), _on_finish())),
             )
 
         def stop_wf(self):

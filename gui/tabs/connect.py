@@ -309,7 +309,7 @@ def _do_connect(self, instrument_id: str, idn_label, connect_btn,
             widgets = self.connect_cards[instrument_id]
             widgets["connection"] = conn
             widgets["idn"] = idn
-            self.after(0, lambda: _on_success(self, widgets, idn))
+            self.after(0, lambda idn=idn: _on_success(self, widgets, idn))
         except Exception as e:
             widgets = self.connect_cards[instrument_id]
             if conn is not None:
@@ -317,7 +317,11 @@ def _do_connect(self, instrument_id: str, idn_label, connect_btn,
                     conn.close()
                 except Exception:
                     pass
-            self.after(0, lambda: _on_error(self, widgets, str(e)))
+            # Bind ``e`` as a default argument so the lambda captures
+            # its current value. Under Python 3.13 the ``as e`` name
+            # is deleted when the ``except`` block exits, so a plain
+            # ``lambda: ... str(e)`` would raise NameError later.
+            self.after(0, lambda e=e: _on_error(self, widgets, str(e)))
 
     threading.Thread(target=_worker, daemon=True).start()
 

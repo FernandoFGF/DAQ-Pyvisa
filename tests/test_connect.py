@@ -216,5 +216,62 @@ class ParseIdnModelTests(unittest.TestCase):
         self.assertEqual(parse_idn_model("Acme, Model-X ,sn,fw"), "Model-X")
 
 
+class ExceptBlockLambdaClosureTests(unittest.TestCase):
+    """Under Python 3.13, ``except Exception as e:`` deletes the
+    ``e`` name when the block exits, so a ``lambda: str(e)``
+    scheduled via ``after(0, ...)`` (i.e. fired after the worker
+    has returned) will raise ``NameError`` later.
+
+    The fix used in ``_do_connect`` binds ``e`` as a default
+    argument of the lambda so its current value is captured.
+    """
+
+    def test_plain_lambda_fails_when_fired_after_except_block(self):
+        """Reproduce the bug: a ``lambda: str(e)`` defined inside
+        an ``except`` block and then fired after the block has
+        exited must raise ``NameError`` on Python 3.13. This is
+        exactly what the user saw in connect.py:320.
+        """
+        import sys
+        if sys.version_info < (3, 13):
+            self.skipTest("behaviour changed at 3.13")
+
+        captured: list = []
+        scheduled: list = []
+
+        def schedule(cb):
+            # Simulate ``self.after(0, cb)``: defer the callback
+            # until after the ``try``/``except`` block has exited.
+            scheduled.append(cb)
+
+        try:
+            raise ValueError("simulated VISA timeout")
+        except Exception as e:
+            schedule(lambda: captured.append(str(e)))
+
+        # The worker has returned; now fire the scheduled callback.
+        self.assertEqual(len(scheduled), 1)
+        with self.assertRaises(NameError):
+            scheduled[0]()
+        self.assertEqual(captured, [])
+
+    def test_lambda_with_default_arg_captures_e(self):
+        """The fix: ``lambda e=e: str(e)`` keeps the value alive
+        even after the except block has exited."""
+        captured: list = []
+        scheduled: list = []
+
+        def schedule(cb):
+            scheduled.append(cb)
+
+        try:
+            raise ValueError("simulated VISA timeout")
+        except Exception as e:
+            schedule(lambda e=e: captured.append(str(e)))
+
+        scheduled[0]()
+        self.assertEqual(captured, ["simulated VISA timeout"])
+
+
 if __name__ == "__main__":
     unittest.main()
