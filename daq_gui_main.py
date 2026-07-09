@@ -139,9 +139,19 @@ try:
             self.gui_funcs.add_gui_callback('data_ready', self.update_data)
             self.gui_funcs.add_gui_callback('error', self.show_error)
 
-            # Title and geometry
+            # Title and geometry. Start maximised so the
+            # application uses the full screen by default; the
+            # user can still tile or resize the window freely.
             self.title("SiPMs UGR DAQ")
             self.geometry(f"{1200}x{700}")
+            try:
+                # ``zoomed`` is the Tk / Windows idiom for
+                # ``maximised``. On macOS it is a no-op; on X11
+                # some window managers ignore it but the user
+                # can still resize the window.
+                self.state("zoomed")
+            except Exception:
+                pass
 
             # Configure grid layout (4x4)
             self.grid_columnconfigure(0, weight=2)

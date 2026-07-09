@@ -182,25 +182,29 @@ def setting_iv(self):
     # used by the Spectrum / Waveform tabs: two CTkRadioButton
     # widgets sharing a single StringVar, hosted in a small
     # opaque frame so the two options sit close together
-    # instead of being pulled to the column edges.
+    # instead of being pulled to the column edges. An inner
+    # transparent frame is used to centre the radios inside
+    # the outer box regardless of the optionsIV width.
     self.selected_channelIV = ctk.StringVar(value="CH1")
     self.channels_frame_iv = ctk.CTkFrame(self.optionsIV)
-    # The frame is sized to its content (sticky="w") so the
-    # two radios are tight next to each other, not stretched
-    # across the whole optionsIV width.
     self.channels_frame_iv.grid(
-        row=1, column=0, columnspan=2, padx=10, pady=(10, 5), sticky="w",
+        row=1, column=0, columnspan=2, padx=10, pady=(10, 5), sticky="ew",
     )
+    self.channels_frame_iv.grid_columnconfigure((0, 1), weight=1)
+    # Inner frame: stays the size of its content, packed
+    # in the centre of the outer box.
+    self.channels_inner_iv = ctk.CTkFrame(self.channels_frame_iv, fg_color="transparent")
+    self.channels_inner_iv.grid(row=0, column=0, columnspan=2, pady=(10, 5))
     self.ch1IV = ctk.CTkRadioButton(
-        self.channels_frame_iv, text="CH1",
+        self.channels_inner_iv, text="CH1",
         variable=self.selected_channelIV, value="CH1",
     )
-    self.ch1IV.grid(row=0, column=0, padx=(10, 5), pady=(10, 5))
+    self.ch1IV.grid(row=0, column=0, padx=(10, 5), pady=0)
     self.ch2IV = ctk.CTkRadioButton(
-        self.channels_frame_iv, text="CH2",
+        self.channels_inner_iv, text="CH2",
         variable=self.selected_channelIV, value="CH2",
     )
-    self.ch2IV.grid(row=0, column=1, padx=(5, 10), pady=(10, 5))
+    self.ch2IV.grid(row=0, column=1, padx=(5, 10), pady=0)
 
     self.iv_start = ctk.CTkLabel(self.optionsIV, text="Set voltage start:", anchor="w")
     self.iv_start.grid(row=2, column=0, padx=20, pady=(10, 0))
