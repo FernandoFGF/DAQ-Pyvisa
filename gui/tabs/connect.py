@@ -349,10 +349,14 @@ def _on_success(self, widgets: dict, idn: str) -> None:
                     pass
     # If this card is the AWG, let the ArbGen tab re-detect the
     # SCPI dialect (Siglent vs Agilent) from the *IDN? response
-    # and rebuild its wave-type dropdown to match.
-    if widgets.get("instrument_id") == "arbGen" and hasattr(self, "arbgen_update_connected"):
+    # and rebuild its wave-type dropdown to match. ``arbgen_update_connected``
+    # is a free function in the ``arbgen`` module, not a method
+    # on the App, so we look it up there and call it with the App
+    # as the only argument.
+    if widgets.get("instrument_id") == "arbGen":
         try:
-            self.arbgen_update_connected()
+            import gui.tabs.arbgen as _arbgen_mod
+            _arbgen_mod.arbgen_update_connected(self)
         except Exception:
             pass
 
@@ -398,9 +402,10 @@ def _do_disconnect(self, instrument_id: str, idn_label, connect_btn,
                     pass
     # If this card is the AWG, refresh the connected indicator
     # so the user sees "(none)" instead of a stale model name.
-    if instrument_id == "arbGen" and hasattr(self, "arbgen_update_connected"):
+    if instrument_id == "arbGen":
         try:
-            self.arbgen_update_connected()
+            import gui.tabs.arbgen as _arbgen_mod
+            _arbgen_mod.arbgen_update_connected(self)
         except Exception:
             pass
 

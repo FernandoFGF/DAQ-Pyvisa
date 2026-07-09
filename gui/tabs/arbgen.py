@@ -360,6 +360,11 @@ def arbgen_update_connected(self) -> None:
     the fly. The connected indicator is updated with the
     raw ``*IDN?`` response so the user can see exactly which
     model the program recognised.
+
+    Always updates ``self.arbgen_dialect`` so a freshly
+    connected AWG is reflected immediately, even if the
+    user never disconnected the previous one (e.g. switched
+    the IP in the Connect card and pressed Connect again).
     """
     conn = _arbgen_live_conn(self)
     idn = identify_awg(conn)
@@ -375,6 +380,12 @@ def arbgen_update_connected(self) -> None:
     if new_dialect.key != self.arbgen_dialect.key:
         self.arbgen_dialect = new_dialect
         _populate_panels(self, self.tabview.tab("ArbGen"), self.arbgen_dialect)
+    else:
+        # Same dialect, but make sure the cached attribute is
+        # in sync with the freshly-detected object (defensive
+        # against any code path that swapped the dialect
+        # without rebuilding the panels).
+        self.arbgen_dialect = new_dialect
 
 
 # ---- Action handlers (called by the buttons / slide switches) -------------

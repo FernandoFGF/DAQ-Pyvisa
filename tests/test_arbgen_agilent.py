@@ -208,5 +208,123 @@ class SiglentRegressionTests(unittest.TestCase):
         self.assertEqual(fake.writes, ["C1:OUTP ON"])
 
 
+class ConnectTabToArbGenWiringTests(unittest.TestCase):
+    """Regression test for the bug where the Connect tab failed
+    to call arbgen_update_connected after a successful connect,
+    so self.arbgen_dialect stayed at the Siglent default even
+    though the user had plugged in an Agilent 33612A.
+
+    The fix has two parts:
+
+    1. ``connect._on_success`` must invoke the free function
+       ``gui.tabs.arbgen.arbgen_update_connected`` when the
+       card is the AWG (it is a free function, not a method
+       on the App, so ``hasattr(self, ...)`` never sees it).
+    2. ``arbgen_update_connected`` must always update
+       ``self.arbgen_dialect`` from the freshly-detected
+       value, not only when the key changes (defensive: any
+       path that swapped the dialect without rebuilding
+       the panels would otherwise leave a stale reference).
+    """
+
+    def setUp(self):
+        try:
+            import customtkinter as ctk  # noqa: F401
+            self.root = ctk.CTk()
+        except Exception as e:
+            self.skipTest(f"CTk unavailable: {e}")
+        from gui.tabs import arbgen as arbgen_tab
+        self.arbgen_tab = arbgen_tab
+
+        class _Stub:
+            pass
+        self.stub = _Stub()
+        self.stub.tabview = self._StubTabView(self.root)
+        self.stub.config = type("Cfg", (), {"config": None})()
+        self.stub.connect_cards = {}
+        arbgen_tab.setting_arbgen(self.stub)
+
+    def tearDown(self):
+        self.root.destroy()
+
+    def _set_awg_connection(self, idn: str):
+        """Stuff a fake AWG connection into the stub's connect_cards."""
+        from tests.fake_connection import FakeConnection
+        self.stub.connect_cards["arbGen"] = {
+            "connection": FakeConnection(),
+            "idn": idn,
+        }
+        # Pre-load *IDN? response so identify_awg and detect_dialect
+        # both see the right manufacturer.
+        self.stub.connect_cards["arbGen"]["connection"].set_response(
+            "*IDN?", idn
+        )
+
+    def _connect_tab_invoke(self):
+        """Simulate what _on_success does for the arbGen card.
+
+        Mirrors the real wiring: import the arbgen module and
+        call arbgen_update_connected(app) with the stub.
+        """
+        self.arbgen_tab.arbgen_update_connected(self.stub)
+
+    def test_agilent_idn_switches_dialect(self):
+        self._set_awg_connection(
+            "Agilent Technologies,33612A,MY59602303,A.02.03-3.15-03-64-02"
+        )
+        self._connect_tab_invoke()
+        self.assertEqual(self.stub.arbgen_dialect.key, "agilent")
+        # The 'Connected:' label must show the raw IDN.
+        self.assertIn("Agilent Technologies", self.stub.arbgen_connected_label.cget("text"))
+
+    def test_siglent_idn_keeps_siglent_dialect(self):
+        self._set_awg_connection(
+            "Siglent Technologies,SDG2122X,SDG2XCAC6R0231,2.01.01.35R3B2"
+        )
+        self._connect_tab_invoke()
+        self.assertEqual(self.stub.arbgen_dialect.key, "siglent")
+
+    def test_no_connection_falls_back_to_default(self):
+        self._connect_tab_invoke()
+        # No card -> default Siglent dialect.
+        self.assertEqual(self.stub.arbgen_dialect.key, "siglent")
+        # And the indicator says "(none)".
+        self.assertIn("(none)", self.stub.arbgen_connected_label.cget("text"))
+
+    def test_output_after_agilent_connect_uses_agilent_dialect(self):
+        """End-to-end: connect an Agilent, click Output, verify
+        the SCPI command is OUTP1 ON (not C1:OUTP ON)."""
+        from tests.fake_connection import FakeConnection
+        live = FakeConnection()
+        live.set_response(
+            "*IDN?",
+            "Agilent Technologies,33612A,MY59602303,A.02.03-3.15-03-64-02",
+        )
+        self.stub.connect_cards["arbGen"] = {
+            "connection": live, "idn": "Agilent",
+        }
+        self._connect_tab_invoke()
+        self.assertEqual(self.stub.arbgen_dialect.key, "agilent")
+        # Press Output ON.
+        self.arbgen_tab.arbgen_toggle_output(self.stub, "CH1", "ON")
+        # The Agilent command is OUTP1 ON, not C1:OUTP ON.
+        self.assertEqual(live.writes, ["OUTP1 ON"])
+
+    def _StubTabView(self, root):
+        import customtkinter as _ctk
+
+        class _TabView:
+            def __init__(self, root):
+                self._tab_dict = {}
+                self._root = root
+
+            def add(self, name):
+                self._tab_dict[name] = _ctk.CTkFrame(self._root)
+
+            def tab(self, name):
+                return self._tab_dict[name]
+        return _TabView(root)
+
+
 if __name__ == "__main__":
     unittest.main()
