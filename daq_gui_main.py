@@ -457,6 +457,13 @@ try:
 
             self.start_button.configure(state="disabled")
 
+            # Reuse the live SMU session that the Connect tab opened
+            # so we do not open a second VISA session on top of it.
+            smu_conn = None
+            card = self.connect_cards.get("smu") if hasattr(self, "connect_cards") else None
+            if isinstance(card, dict):
+                smu_conn = card.get("connection")
+
             def _on_results(payload):
                 v = payload['voltage']
                 i = payload['current']
@@ -493,6 +500,7 @@ try:
                 v_stop=v_stop,
                 v_step=v_step,
                 option=option,
+                smu_conn=smu_conn,
                 results_callback=_wrapped_results,
                 error_callback=lambda m: self.after(0, lambda: _on_error(m)),
             )
@@ -563,6 +571,42 @@ try:
                 print("Connect an oscilloscope in the Connect tab first.")
                 return
             scope, instrument_id, friendly = active
+            # Reuse the live VISA session that the Connect tab opened
+            # for this instrument so we do not double-open a second
+            # session on top of the first one (which made the scope
+            # flaky, especially on Keysight).
+            scope_conn = None
+            card = self.connect_cards.get(instrument_id) if hasattr(self, "connect_cards") else None
+            if isinstance(card, dict):
+                scope_conn = card.get("connection")
+            # Sanity check: a Keysight connected to the same IP as
+            # another already-open scope session can land in a wedged
+            # state where every query times out. A quick *IDN? with a
+            # short timeout surfaces the problem before we start the
+            # real measurement, so the user gets a clear error
+            # instead of a 20 s silent hang.
+            if scope_conn is not None:
+                try:
+                    prev_timeout = getattr(scope_conn, "timeout", None)
+                    try:
+                        scope_conn.timeout = 3000  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+                    idn_check = scope_conn.query("*IDN?").strip()
+                    if prev_timeout is not None:
+                        try:
+                            scope_conn.timeout = prev_timeout  # type: ignore[attr-defined]
+                        except Exception:
+                            pass
+                    if not idn_check:
+                        raise RuntimeError("empty *IDN? response")
+                    print(f"[Spectrum] using {instrument_id}: {idn_check}")
+                except Exception as e_check:
+                    print(f"[Spectrum] {instrument_id} connection looks dead: "
+                          f"{type(e_check).__name__}: {e_check}")
+                    print("[Spectrum] Reconnect the scope in the Connect tab "
+                          "and try again.")
+                    return
             channel = self.selected_channelSpec.get()
             print(f"[Spectrum] Start: {num_datos} samples, scope={friendly} "
                   f"({instrument_id}, dialect {scope!r}), channel={channel}")
@@ -656,6 +700,7 @@ try:
                 scope=scope,
                 channel=channel,
                 instrument_id=instrument_id,
+                scope_conn=scope_conn,
                 results_callback=lambda p: self.after(0, lambda: (_on_results(p), _reenable())),
                 progress_callback=lambda arr: self.after(0, lambda a=arr: _on_progress(a)),
                 error_callback=lambda m: self.after(0, lambda: (_on_error(m), _reenable())),
@@ -690,6 +735,42 @@ try:
                 print("Connect an oscilloscope in the Connect tab first.")
                 return
             scope, instrument_id, _name = active
+            # Reuse the live VISA session opened by the Connect tab.
+            # Opening a second session against the same IP made the
+            # scope flaky (and was the source of the Keysight timeout
+            # we kept hitting).
+            scope_conn = None
+            card = self.connect_cards.get(instrument_id) if hasattr(self, "connect_cards") else None
+            if isinstance(card, dict):
+                scope_conn = card.get("connection")
+            # Sanity check: a Keysight connected to the same IP as
+            # another already-open scope session can land in a wedged
+            # state where every query times out. A quick *IDN? with a
+            # short timeout surfaces the problem before we start the
+            # real measurement, so the user gets a clear error
+            # instead of a 20 s silent hang.
+            if scope_conn is not None:
+                try:
+                    prev_timeout = getattr(scope_conn, "timeout", None)
+                    try:
+                        scope_conn.timeout = 3000  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+                    idn_check = scope_conn.query("*IDN?").strip()
+                    if prev_timeout is not None:
+                        try:
+                            scope_conn.timeout = prev_timeout  # type: ignore[attr-defined]
+                        except Exception:
+                            pass
+                    if not idn_check:
+                        raise RuntimeError("empty *IDN? response")
+                    print(f"[Waveform] using {instrument_id}: {idn_check}")
+                except Exception as e_check:
+                    print(f"[Waveform] {instrument_id} connection looks dead: "
+                          f"{type(e_check).__name__}: {e_check}")
+                    print("[Waveform] Reconnect the scope in the Connect tab "
+                          "and try again.")
+                    return
             # If the user did not provide a file name, fall back to a
             # default like "default-2026-07-08-10-55-12" so the
             # "Open folder" button always has something to look at
@@ -753,6 +834,7 @@ try:
                 name=name,
                 save_root=save_root,
                 instrument_id=instrument_id,
+                scope_conn=scope_conn,
                 progress_callback=lambda i, n: self.after(0, lambda i=i, n=n: _on_progress(i, n)),
                 results_callback=lambda p: self.after(0, lambda p=p: (_on_results(p), _on_finish())),
                 error_callback=lambda m: self.after(0, lambda m=m: (_on_error(m), _on_finish())),

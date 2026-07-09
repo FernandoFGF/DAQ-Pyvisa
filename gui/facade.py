@@ -46,9 +46,18 @@ class DAQGUIFunctions:
 
     def start_iv_full(self, v_start: float, v_stop: float, v_step: float,
                       option: str = "SMU",
+                      smu_conn=None,
                       results_callback: Optional[Callable[[dict], None]] = None,
                       error_callback: Optional[Callable[[str], None]] = None) -> None:
-        """Run an IV measurement in a background thread using IVAcquisition."""
+        """Run an IV measurement in a background thread using IVAcquisition.
+
+        ``smu_conn`` is the live ``InstrumentConnection`` opened by the
+        Connect tab for the SMU. When provided the adapter reuses it
+        via ``set_connection`` so we do not open a second VISA session
+        on top of the one the Connect card is holding. When ``None``
+        (legacy behaviour) the adapter opens its own connection.
+        """
+
         from acquisition.iv_acquisition import IVAcquisition
 
         if self.threads_active["iv"]:
@@ -60,6 +69,8 @@ class DAQGUIFunctions:
             try:
                 acq = IVAcquisition("smu", v_start=v_start, v_stop=v_stop,
                                     v_step=v_step, config=self.config.config)
+                if smu_conn is not None:
+                    acq.set_connection(smu_conn)
                 result = acq.run()
                 payload = {
                     "voltage": result.voltage,
@@ -78,6 +89,7 @@ class DAQGUIFunctions:
 
     def start_spectrum_full(self, num_datos: int, scope: str, channel: str,
                             instrument_id: Optional[str] = None,
+                            scope_conn=None,
                             results_callback: Optional[Callable[[dict], None]] = None,
                             progress_callback: Optional[Callable[[Any], None]] = None,
                             error_callback: Optional[Callable[[str], None]] = None) -> None:
@@ -88,6 +100,14 @@ class DAQGUIFunctions:
         id (``"scope1"``/``"scope2"``/``"scope3"``); when omitted the
         adapter falls back to ``f"scope{scope}"`` for backwards
         compatibility with the legacy hard-coded mapping.
+
+        ``scope_conn`` is the live ``InstrumentConnection`` opened by
+        the Connect tab. When provided the adapter reuses it via
+        ``set_connection`` so we do not open a second VISA session on
+        top of the one the Connect card is holding (which previously
+        caused duplicate sessions and made the scope flaky). When
+        ``None`` (legacy / test behaviour) the adapter opens its own
+        connection.
         """
         from acquisition.spectrum_acquisition import SpectrumAcquisition
 
@@ -109,6 +129,8 @@ class DAQGUIFunctions:
                                           instrument_id=actual_instrument_id,
                                           num_datos=num_datos,
                                           config=self.config.config)
+                if scope_conn is not None:
+                    acq.set_connection(scope_conn)
                 # Expose the live adapter so the GUI can request a
                 # cooperative stop via ``request_stop()``.
                 self._spectrum_acq = acq
@@ -134,6 +156,7 @@ class DAQGUIFunctions:
     def start_waveform_full(self, scope: str, channel: str, time_seconds: float,
                             name: str, save_root: str,
                             instrument_id: Optional[str] = None,
+                            scope_conn=None,
                             results_callback: Optional[Callable[[dict], None]] = None,
                             progress_callback: Optional[Callable[[int, int], None]] = None,
                             error_callback: Optional[Callable[[str], None]] = None) -> None:
@@ -143,6 +166,14 @@ class DAQGUIFunctions:
         ``instrument_id`` is the actual VISA resource id
         (``"scope1"``/``"scope2"``/``"scope3"``); falls back to
         ``f"scope{scope}"`` when omitted.
+
+        ``scope_conn`` is the live ``InstrumentConnection`` opened by
+        the Connect tab. When provided the adapter reuses it via
+        ``set_connection`` so we do not open a second VISA session on
+        top of the one the Connect card is holding (which previously
+        caused duplicate sessions and made the scope flaky, especially
+        on Keysight). When ``None`` (legacy / test behaviour) the
+        adapter opens its own connection.
 
         ``progress_callback`` is called once per captured segment as
         ``(index_1based, total_segments)`` so the GUI can print a
@@ -174,6 +205,8 @@ class DAQGUIFunctions:
                                           time_seconds=time_seconds,
                                           save_root=save_root, name=name,
                                           config=self.config.config)
+                if scope_conn is not None:
+                    acq.set_connection(scope_conn)
                 self._waveform_acq = acq
                 result = acq.run(progress_callback=_on_progress)
                 payload = {

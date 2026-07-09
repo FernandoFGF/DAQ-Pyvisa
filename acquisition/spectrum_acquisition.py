@@ -55,13 +55,26 @@ class SpectrumAcquisition:
         # ``f"scope{scope_id}"`` mapping for backwards compatibility.
         self.instrument_id = instrument_id
         self._conn: Optional[InstrumentConnection] = None
+        # When ``set_connection`` injects an externally-owned
+        # connection (the one the Connect card is holding) we must
+        # NOT close it on ``close()``; the GUI owns the lifetime and
+        # will close it itself. When we opened the connection
+        # ourselves, ``close()`` is the right place to release it.
+        self._owns_connection: bool = False
         # Cooperative cancellation: set by ``request_stop()`` and
         # checked between samples so the worker finishes the current
         # iteration and exits cleanly.
         self._stop_requested = False
 
     def set_connection(self, conn: InstrumentConnection) -> None:
+        """Inject a connection (used by tests and by the GUI when the
+        Connect tab already holds a live VISA session).
+
+        The adapter will not close this connection on ``close()``;
+        whoever injected it is responsible for its lifetime.
+        """
         self._conn = conn
+        self._owns_connection = False
 
     def request_stop(self) -> None:
         """Ask the running acquisition to stop after the current sample.
@@ -76,14 +89,16 @@ class SpectrumAcquisition:
         if self._conn is None:
             target = self.instrument_id or f"scope{self.scope_id}"
             self._conn = open_pyvisa(target, self.config)
+            self._owns_connection = True
 
     def close(self) -> None:
-        if self._conn is not None:
+        if self._conn is not None and self._owns_connection:
             try:
                 self._conn.close()
             except Exception:
                 pass
-            self._conn = None
+        self._conn = None
+        self._owns_connection = False
 
     def __enter__(self) -> "SpectrumAcquisition":
         self.open()

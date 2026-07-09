@@ -38,19 +38,33 @@ class IVAcquisition:
         self.v_step = float(v_step)
         self.config = config
         self._conn: Optional[InstrumentConnection] = None
+        # When ``set_connection`` injects an externally-owned
+        # connection (the one the Connect card is holding) we must
+        # NOT close it on ``close()``; the GUI owns the lifetime and
+        # will close it itself. When we opened the connection
+        # ourselves, ``close()`` is the right place to release it.
+        self._owns_connection: bool = False
 
     def set_connection(self, conn: InstrumentConnection) -> None:
-        """Inject a connection (used by tests)."""
+        """Inject a connection (used by tests and by the GUI when the
+        Connect tab already holds a live VISA session).
+
+        The adapter will not close this connection on ``close()``;
+        whoever injected it is responsible for its lifetime.
+        """
         self._conn = conn
+        self._owns_connection = False
 
     def open(self) -> None:
         if self._conn is None:
             self._conn = open_pyvisa(self.smu_id, self.config)
+            self._owns_connection = True
 
     def close(self) -> None:
-        if self._conn is not None:
+        if self._conn is not None and self._owns_connection:
             self._conn.close()
-            self._conn = None
+        self._conn = None
+        self._owns_connection = False
 
     def __enter__(self) -> "IVAcquisition":
         self.open()

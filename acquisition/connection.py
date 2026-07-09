@@ -109,8 +109,14 @@ def open_pyvisa(instrument_id: str, config=None) -> InstrumentConnection:
     address = _resolve_address(instrument_id, config)
     rm = pyvisa.ResourceManager()
     resource = rm.open_resource(address)
+    # 20 s default: long enough for a Keysight :WAV:DATA? (1.4 MB)
+    # to finish even on a slow link, but short enough that a
+    # completely unreachable scope fails fast. Matches the timeout
+    # the waveform / spectrum adapters ask for, so reusing this
+    # connection from the Connect tab does not need a second
+    # timeout push.
     try:
-        resource.timeout = 10000  # 10 s default for the Connect command line
+        resource.timeout = 20000
     except Exception:
         pass
     return _PyvisaAdapter(resource)

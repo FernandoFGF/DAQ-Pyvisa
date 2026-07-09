@@ -76,6 +76,12 @@ class WaveformAcquisition:
         # ``f"scope{scope_id}"`` mapping for backwards compatibility.
         self.instrument_id = instrument_id
         self._conn: Optional[InstrumentConnection] = None
+        # When ``set_connection`` injects an externally-owned
+        # connection (the one the Connect card is holding) we must
+        # NOT close it on ``close()``; the GUI owns the lifetime and
+        # will close it itself. When we opened the connection
+        # ourselves, ``close()`` is the right place to release it.
+        self._owns_connection: bool = False
         # Cooperative cancellation: set by ``request_stop()`` and
         # checked at the top of each per-segment loop. Mirrors the
         # pattern in ``SpectrumAcquisition``.
@@ -91,17 +97,26 @@ class WaveformAcquisition:
         self._stop_requested = True
 
     def set_connection(self, conn: InstrumentConnection) -> None:
+        """Inject a connection (used by tests and by the GUI when the
+        Connect tab already holds a live VISA session).
+
+        The adapter will not close this connection on ``close()``;
+        whoever injected it is responsible for its lifetime.
+        """
         self._conn = conn
+        self._owns_connection = False
 
     def open(self) -> None:
         if self._conn is None:
             target = self.instrument_id or f"scope{self.scope_id}"
             self._conn = open_pyvisa(target, self.config)
+            self._owns_connection = True
 
     def close(self) -> None:
-        if self._conn is not None:
+        if self._conn is not None and self._owns_connection:
             self._conn.close()
-            self._conn = None
+        self._conn = None
+        self._owns_connection = False
 
     def __enter__(self) -> "WaveformAcquisition":
         self.open()
@@ -178,6 +193,12 @@ class WaveformAcquisition:
         is read with ``:WAVeform:DATA?`` and the per-segment TSR
         timestamp with ``:WAVeform:SEGMented:TTAG?``. A repeated TSR
         triggers an early exit (no file is written for the duplicate).
+
+        The legacy sequence issues ``*OPC?`` *after* the
+        ``:WAVeform:DATA?`` read so the scope has time to flush the
+        previous data block before the next ``:INDex`` write. Without
+        that, Keysight occasionally drops the segment and the next
+        query hangs until the connection times out.
         """
         conn.write(":STOP")
         conn.write(ds.asciiKey)
@@ -191,8 +212,8 @@ class WaveformAcquisition:
                       f"stop requested at segment {i}.")
                 break
             conn.write(ds.selectCurrKey(n_segments, i + 1))
-            self._waiting(conn)
             raw = conn.query(ds.waveformkey)
+            self._waiting(conn)
             cleaned = raw.strip().replace("\n", "").replace("\r", "")
             y_data = np.array(
                 [float(x) for x in cleaned.split(",") if x.strip()],
