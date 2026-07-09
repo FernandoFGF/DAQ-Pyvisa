@@ -185,8 +185,11 @@ def setting_iv(self):
     # instead of being pulled to the column edges.
     self.selected_channelIV = ctk.StringVar(value="CH1")
     self.channels_frame_iv = ctk.CTkFrame(self.optionsIV)
+    # The frame is sized to its content (sticky="w") so the
+    # two radios are tight next to each other, not stretched
+    # across the whole optionsIV width.
     self.channels_frame_iv.grid(
-        row=1, column=0, columnspan=2, padx=10, pady=(10, 5), sticky="nsew",
+        row=1, column=0, columnspan=2, padx=10, pady=(10, 5), sticky="w",
     )
     self.ch1IV = ctk.CTkRadioButton(
         self.channels_frame_iv, text="CH1",
