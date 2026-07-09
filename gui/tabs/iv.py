@@ -178,31 +178,32 @@ def setting_iv(self):
     self.options.grid_remove()
 
     # Channel selector. The Keithley 2470 has two channels; we
-    # let the user pick which one to drive. The radios share
-    # a single StringVar (mutual exclusion for free) and
-    # sit at the same 20px left indent as the voltage entry
-    # boxes below, so the whole parameters column stays
-    # left-aligned and consistent with the rest of the form.
+    # let the user pick which one to drive. Mirrors the
+    # Spectrum / Waveform layout: an opaque box with two
+    # columns, each column holding one CTkRadioButton. Both
+    # columns have weight=1 so the radios sit centred in
+    # their respective cells, regardless of the optionsIV
+    # width. The radios share a single StringVar so mutual
+    # exclusion comes for free.
     self.selected_channelIV = ctk.StringVar(value="CH1")
-    self.channels_frame_iv = ctk.CTkFrame(self.optionsIV, fg_color="transparent")
-    # ``sticky='w'`` keeps the inner frame collapsed to the
-    # width of its two radios (so they sit close together);
-    # the 20px padx matches the label / entry padding used
-    # by the vStart / vStop / vStep rows below so the eye
-    # reads the four rows as one aligned column.
+    self.channels_frame_iv = ctk.CTkFrame(self.optionsIV)
     self.channels_frame_iv.grid(
-        row=1, column=0, columnspan=2, padx=20, pady=(10, 5), sticky="w",
+        row=1, column=0, columnspan=2, padx=10, pady=(10, 5), sticky="ew",
     )
+    # Two equal-weight columns so the two radios end up
+    # horizontally centred within the box (each radio
+    # sits in the middle of its own cell).
+    self.channels_frame_iv.grid_columnconfigure((0, 1), weight=1)
     self.ch1IV = ctk.CTkRadioButton(
         self.channels_frame_iv, text="CH1",
         variable=self.selected_channelIV, value="CH1",
     )
-    self.ch1IV.grid(row=0, column=0, padx=(0, 8), pady=(10, 5))
+    self.ch1IV.grid(row=0, column=0, padx=0, pady=(10, 5))
     self.ch2IV = ctk.CTkRadioButton(
         self.channels_frame_iv, text="CH2",
         variable=self.selected_channelIV, value="CH2",
     )
-    self.ch2IV.grid(row=0, column=1, padx=(8, 0), pady=(10, 5))
+    self.ch2IV.grid(row=0, column=1, padx=0, pady=(10, 5))
 
     self.iv_start = ctk.CTkLabel(self.optionsIV, text="Set voltage start:", anchor="w")
     self.iv_start.grid(row=2, column=0, padx=20, pady=(10, 0))
