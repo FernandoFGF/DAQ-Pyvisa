@@ -1,23 +1,13 @@
 {
   "spectrum": {
     "rta": [
-      "Configuración de la función matemática F(x)
-
-Pulsa el botón Math.
-Activa M1 (Estado = ON).
-Configura:
-Fuente: C1
-Operación: Integral
-Unidad: Vs
-
-Regresa a la pantalla principal.
-Configuración de los cursores
-
-Pulsa el botón Cursor.
-En Fuente, selecciona M1.
-En Tipo, selecciona Marcador V.
-Activa Sobre traza.
-Mueve el marcador con el mando giratorio para recorrer la función matemática"
+      "Configurar la función matemática F(x).",
+      "Pulsa el botón Math.",
+      "Activa M1 (Estado = ON).",
+      "Configura: Fuente C1, Operación Integral, Unidad Vs.",
+      "Regresa a la pantalla principal.",
+      "Configura los cursores: Fuente M1, Tipo Marcador V, Sobre traza ON.",
+      "Mueve el marcador con el mando giratorio para recorrer la función matemática."
     ],
     "rto": [
       "Configurar una measurement de Area.",
@@ -32,19 +22,19 @@ Mueve el marcador con el mando giratorio para recorrer la función matemática"
   },
   "waveform": {
     "rta": [
-      "Configurar Adquisition para las tomas que queremos.
-      Configurar el tamaño de cada muestra
-      Pulsar en single y pulsar en Start"
+      "Configurar Acquisition para las tomas que queremos.",
+      "Configurar el tamaño de cada muestra.",
+      "Pulsar en single y pulsar en Start."
     ],
     "rto": [
-      "Configurar Adquisition para las tomas que queremos.
-      Configurar el tamaño de cada muestra
-      Pulsar en single y pulsar en Start"
+      "Configurar Acquisition para las tomas que queremos.",
+      "Configurar el tamaño de cada muestra.",
+      "Pulsar en single y pulsar en Start."
     ],
     "keysight": [
-      "Configurar Adquisition para las tomas que queremos.
-      Configurar el tamaño de cada muestra
-      Pulsar en single y pulsar en Start"
+      "Configurar Acquisition para las tomas que queremos.",
+      "Configurar el tamaño de cada muestra.",
+      "Pulsar en single y pulsar en Start."
     ]
   }
 }
