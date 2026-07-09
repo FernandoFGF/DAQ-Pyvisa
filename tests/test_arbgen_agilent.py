@@ -60,18 +60,30 @@ class AgilentDialectDetectionTests(unittest.TestCase):
 class AgilentWaveLabelsTests(unittest.TestCase):
     def test_wave_labels_for_agilent(self):
         labels = wave_labels_for(AGILENT)
-        # The 33600A does not have a Triangle option; we omit it
-        # from the dropdown for the Agilent dialect.
-        self.assertNotIn("Triangle", labels)
+        # The user wants both dialects to expose exactly the
+        # same four wave types: Sine, Square, Triangle, Pulse
+        # train. The Agilent SCPI token for Triangle is RAMP.
+        self.assertEqual(
+            labels, ["Sine", "Square", "Triangle", "Pulse train"],
+        )
         self.assertIn("Pulse train", labels)
         self.assertIn("Sine", labels)
         self.assertIn("Square", labels)
+        self.assertIn("Triangle", labels)
+        # 33600A-only extras (NOIS/DC/ARB) must NOT appear so
+        # the two dialect dropdowns stay identical.
+        for forbidden in ("Noise", "DC", "Arb"):
+            self.assertNotIn(forbidden, labels)
 
     def test_wave_token_for_agilent_pulse(self):
         self.assertEqual(wave_token_for(AGILENT, "Pulse train"), "PULS")
 
     def test_wave_token_for_agilent_sine(self):
         self.assertEqual(wave_token_for(AGILENT, "Sine"), "SIN")
+
+    def test_wave_token_for_agilent_triangle(self):
+        # Triangle maps to RAMP on the Agilent 33600A.
+        self.assertEqual(wave_token_for(AGILENT, "Triangle"), "RAMP")
 
 
 class AgilentApplyParamsTests(unittest.TestCase):
@@ -276,6 +288,29 @@ class ConnectTabToArbGenWiringTests(unittest.TestCase):
         self.assertEqual(self.stub.arbgen_dialect.key, "agilent")
         # The 'Connected:' label must show the raw IDN.
         self.assertIn("Agilent Technologies", self.stub.arbgen_connected_label.cget("text"))
+
+    def test_wave_type_dropdown_callback_does_not_crash(self):
+        """Regression test for the NameError: name 'self' is not
+        defined bug. The wave-type dropdown's command callback
+        used to reference a bare ``self`` which is not defined
+        in the module-level ``_build_channel_panel`` scope. The
+        fix forwards the App to the panel builder so the
+        callback can call ``_refresh_pulse_visibility(app, ch)``.
+        """
+        # After setting_arbgen the panels are built. Picking a
+        # different value from the dropdown used to raise
+        # NameError because the lambda captured nothing.
+        panel = self.stub.arbgen_panels["CH1"]
+        # The current value of the dropdown is "Sine". Pick
+        # "Pulse train" (label) - the underlying CTk widget
+        # expects the value to be in the values list.
+        labels = [v for v in panel["waveform"]._values]  # noqa: SLF001
+        self.assertIn("Pulse train", labels)
+        # Invoking the dropdown command should not raise.
+        try:
+            panel["waveform"]._command("Pulse train")  # noqa: SLF001
+        except NameError as e:
+            self.fail(f"dropdown command raised NameError: {e}")
 
     def test_siglent_idn_keeps_siglent_dialect(self):
         self._set_awg_connection(

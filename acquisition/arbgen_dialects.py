@@ -105,15 +105,17 @@ SIGLENT = ArbgenDialect(
 AGILENT = ArbgenDialect(
     key="agilent",
     label="Keysight / Agilent 33612A",
-    # Agilent does not expose a Triangle option in the 33600A
-    # family, so the dropdown omits it for the Agilent dialect.
+    # The Agilent / Keysight 33600A exposes the same four
+    # waveform types the user wants in the GUI: Sine, Square,
+    # Triangle (SCPI RAMP) and Pulse train (PULS). The
+    # additional 33600A wave types (NOIS, DC, ARB) are
+    # intentionally omitted to keep both dialect dropdowns
+    # identical.
     wave_tokens={
         "Sine": "SIN",
         "Square": "SQU",
+        "Triangle": "RAMP",
         "Pulse train": "PULS",
-        "Noise": "NOIS",
-        "DC": "DC",
-        "Arb": "ARB",
     },
     channel_prefix=_agilent_prefix,
     wave_command="{prefix}:FUNC {token}",

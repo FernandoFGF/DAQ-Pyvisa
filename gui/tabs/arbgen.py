@@ -133,7 +133,7 @@ def _make_slide_switch(parent, row: int, label: str, options,
     return sw
 
 
-def _build_channel_panel(parent: ctk.CTkFrame, channel: str,
+def _build_channel_panel(parent: ctk.CTkFrame, app, channel: str,
                          dialect: ArbgenDialect) -> dict:
     """Build one per-channel control panel.
 
@@ -168,7 +168,7 @@ def _build_channel_panel(parent: ctk.CTkFrame, channel: str,
     # the wave type so PULSE hides the phase field and other
     # modes hide the pulse width.
     waveform.configure(
-        command=lambda _value, ch=channel: _refresh_pulse_visibility(self, ch)
+        command=lambda _value, ch=channel: _refresh_pulse_visibility(app, ch)
     )
 
     # --- Frequency / Amplitude / Offset / Phase / Width text inputs -------
@@ -328,7 +328,7 @@ def _populate_panels(self, tab, dialect: ArbgenDialect) -> None:
     for col, channel in enumerate(("CH1", "CH2")):
         panel_frame = ctk.CTkScrollableFrame(tab)
         panel_frame.grid(row=1, column=col, padx=8, pady=8, sticky="nsew")
-        widgets = _build_channel_panel(panel_frame, channel, dialect)
+        widgets = _build_channel_panel(panel_frame, self, channel, dialect)
         widgets["frame"].pack(fill="both", expand=True, padx=4, pady=4)
         # Wire the per-channel buttons to the per-channel handlers.
         widgets["update_button"].configure(
