@@ -186,41 +186,42 @@ def setting_iv(self):
     self.options.grid(row=0, column=1, padx=20, pady=(20, 0))
     self.options.grid_remove()
 
-    self.iv_start = ctk.CTkLabel(self.optionsIV, text="Set voltage start:", anchor="w")
-    self.iv_start.grid(row=1, column=0, padx=20, pady=(10, 0))
-    self.vStart = ctk.CTkEntry(self.optionsIV, placeholder_text="1V defalut")
-    self.vStart.grid(row=2, column=0, padx=20, pady=(0,5))
-
-    self.iv_stop = ctk.CTkLabel(self.optionsIV, text="Set voltage stop:", anchor="w")
-    self.iv_stop.grid(row=3, column=0, padx=20, pady=(5, 0))
-    self.vStop = ctk.CTkEntry(self.optionsIV, placeholder_text="-40V defalut")
-    self.vStop.grid(row=4, column=0, padx=20, pady=(0,5))
-
-    self.iv_step = ctk.CTkLabel(self.optionsIV, text="Set voltage step:", anchor="w")
-    self.iv_step.grid(row=5, column=0, padx=20, pady=(5, 0))
-    self.vStep = ctk.CTkEntry(self.optionsIV, placeholder_text="0.05V defalut")
-    self.vStep.grid(row=6, column=0, padx=20, pady=(0,5))
-
     # Channel selector. The Keithley 2470 has two channels; we
     # let the user pick which one to drive with a pair of
-    # mutually-exclusive check boxes. They sit on the same row
-    # as the vStep entry so the whole parameters column stays
-    # aligned, and there is no "Channel:" label.
+    # mutually-exclusive check boxes. They sit on their own
+    # row directly under the SMU label so the layout reads
+    # top-to-bottom: connected instrument, which channel,
+    # voltage parameters, Start.
     self.iv_channel_var_ch1 = ctk.BooleanVar(value=True)
     self.iv_channel_var_ch2 = ctk.BooleanVar(value=False)
     self.iv_channel_ch1 = ctk.CTkCheckBox(
         self.optionsIV, text="CH1", variable=self.iv_channel_var_ch1,
         command=lambda: _iv_on_channel_toggle(self, 1),
     )
-    self.iv_channel_ch1.grid(row=6, column=1, padx=(0, 12), pady=(0, 5), sticky="w")
+    self.iv_channel_ch1.grid(row=1, column=0, padx=(20, 8), pady=(8, 4), sticky="w")
     self.iv_channel_ch2 = ctk.CTkCheckBox(
         self.optionsIV, text="CH2", variable=self.iv_channel_var_ch2,
         command=lambda: _iv_on_channel_toggle(self, 2),
     )
-    self.iv_channel_ch2.grid(row=6, column=1, padx=(60, 0), pady=(0, 5), sticky="w")
+    self.iv_channel_ch2.grid(row=1, column=0, padx=(80, 0), pady=(8, 4), sticky="w")
+
+    self.iv_start = ctk.CTkLabel(self.optionsIV, text="Set voltage start:", anchor="w")
+    self.iv_start.grid(row=2, column=0, padx=20, pady=(10, 0))
+    self.vStart = ctk.CTkEntry(self.optionsIV, placeholder_text="1V defalut")
+    self.vStart.grid(row=3, column=0, padx=20, pady=(0,5))
+
+    self.iv_stop = ctk.CTkLabel(self.optionsIV, text="Set voltage stop:", anchor="w")
+    self.iv_stop.grid(row=4, column=0, padx=20, pady=(5, 0))
+    self.vStop = ctk.CTkEntry(self.optionsIV, placeholder_text="-40V defalut")
+    self.vStop.grid(row=5, column=0, padx=20, pady=(0,5))
+
+    self.iv_step = ctk.CTkLabel(self.optionsIV, text="Set voltage step:", anchor="w")
+    self.iv_step.grid(row=6, column=0, padx=20, pady=(5, 0))
+    self.vStep = ctk.CTkEntry(self.optionsIV, placeholder_text="0.05V defalut")
+    self.vStep.grid(row=7, column=0, padx=20, pady=(0,5))
 
     self.start_button = ctk.CTkButton(self.optionsIV, text="Start", command=self.start_iv)
-    self.start_button.grid(row=7, column=0, padx=20, pady=(15, 20), columnspan=2, sticky="s")
+    self.start_button.grid(row=8, column=0, padx=20, pady=(15, 20), columnspan=2, sticky="s")
 
     self.plotIV = ctk.CTkFrame(self.tabview.tab("IV Curves"))
     self.plotIV.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
