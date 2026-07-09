@@ -61,12 +61,18 @@ class IVResult:
 class IVAcquisition:
     def __init__(self, smu_id: str = "smu", v_start: float = 1.0,
                  v_stop: float = -40.0, v_step: float = 0.05,
-                 config=None) -> None:
+                 config=None, channel: int = 1) -> None:
         self.smu_id = smu_id
         self.v_start = float(v_start)
         self.v_stop = float(v_stop)
         self.v_step = float(v_step)
         self.config = config
+        # The Keithley 2470 has two channels; the user picks
+        # which one to drive from the IV tab. The number is
+        # substituted into the ``(@N)`` token of the :init and
+        # :FETCh commands. Clamped to 1..2 because the SMU
+        # firmware rejects anything outside that range.
+        self.channel = max(1, min(2, int(channel)))
         self._conn: Optional[InstrumentConnection] = None
         # When ``set_connection`` injects an externally-owned
         # connection (the one the Connect card is holding) we must
@@ -146,15 +152,20 @@ class IVAcquisition:
         conn.write(f":trig:coun {points}")
         # Output on, init, wait for completion.
         conn.write(ds.smuOn)
-        conn.write(ds.smuInit)
+        # The :init and :FETCh commands need the channel selector
+        # (``(@N)``) so the SMU knows which channel to drive / read.
+        # The legacy code always used 1; we now substitute the user
+        # selection from the IV tab.
+        ch = self.channel
+        conn.write(f":init (@{ch})")
         self._wait_for_complete(conn)
-        # Read back both arrays from channel 1. The ``(@1)`` is
-        # non-optional on the 2470: without it the SMU errors with
-        # ``-221,Settings conflict`` and returns a single value
-        # instead of the full sweep, which is what produced the
+        # Read back both arrays from the selected channel. The
+        # ``(@N)`` is non-optional on the 2470: without it the SMU
+        # errors with ``-221,Settings conflict`` and returns a single
+        # value instead of the full sweep, which is what produced the
         # broken curve the user reported.
-        i_result = conn.query(ds.queryCurr)
-        v_result = conn.query(ds.queryVolt)
+        i_result = conn.query(f":fetc:arr:curr? (@{ch})")
+        v_result = conn.query(f":fetc:arr:volt? (@{ch})")
         # Output off.
         conn.write(ds.smuOff)
 

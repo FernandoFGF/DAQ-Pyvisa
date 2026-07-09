@@ -455,6 +455,20 @@ try:
                 self.start_button.configure(state="normal")
                 return
 
+            # If the user did not provide a file name, fall back
+            # to a timestamped default so the "Open folder" button
+            # always has something to look at. Mirrors the spectrum
+            # and waveform flows.
+            if not self.save_entry.get().strip():
+                default_name = "default-" + time.strftime("%Y-%m-%d-%H-%M-%S")
+                self.save_entry.delete(0, "end")
+                self.save_entry.insert(0, default_name)
+                print(f"[IV] No file name set, using '{default_name}'.")
+
+            # Pick the SMU channel from the IV tab check boxes.
+            from gui.tabs.iv import iv_selected_channel
+            channel = iv_selected_channel(self)
+
             self.start_button.configure(state="disabled")
 
             # Reuse the live SMU session that the Connect tab opened
@@ -463,6 +477,14 @@ try:
             card = self.connect_cards.get("smu") if hasattr(self, "connect_cards") else None
             if isinstance(card, dict):
                 smu_conn = card.get("connection")
+            # Abort if no SMU is connected; otherwise the worker
+            # would silently fall back to opening its own session,
+            # which is the exact bug we fixed in the waveform /
+            # spectrum adapters.
+            if smu_conn is None:
+                print("[IV] No SMU connected. Connect the SMU in the Connect tab first.")
+                self.start_button.configure(state="normal")
+                return
 
             def _on_results(payload):
                 v = payload['voltage']
@@ -501,6 +523,7 @@ try:
                 v_step=v_step,
                 option=option,
                 smu_conn=smu_conn,
+                channel=channel,
                 results_callback=_wrapped_results,
                 error_callback=lambda m: self.after(0, lambda: _on_error(m)),
             )

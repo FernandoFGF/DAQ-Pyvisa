@@ -70,22 +70,39 @@ class IVAcquisitionTests(unittest.TestCase):
         self.assertGreaterEqual(self.conn.queries.count("*OPC?"), 1)
 
     def test_query_includes_channel_selector(self):
-        """The 2470 needs the (@1) channel specifier on
-        :FETC:ARR:CURR? / :FETC:ARR:VOLT?; without it the SMU
-        returns a single value and the array is broken. The
-        legacy code always included (@1) and we do too."""
-        self.conn.set_response(ds.queryCurr, "0.1")
-        self.conn.set_response(ds.queryVolt, "0.0")
+        """The 2470 needs the (@N) channel specifier on
+        :FETC:ARR:CURR? / :FETC:ARR:VOLT? and on :init; without
+        it the SMU returns a single value and the array is
+        broken. The default channel is 1; the user can pick 2
+        from the IV tab check boxes."""
+        self.conn.set_response(":fetc:arr:curr? (@1)", "0.1")
+        self.conn.set_response(":fetc:arr:volt? (@1)", "0.0")
         acq = IVAcquisition("smu", v_start=0.0, v_stop=0.0, v_step=0.1)
         acq.set_connection(self.conn)
         acq.run()
-        self.assertIn(ds.queryCurr, self.conn.queries)
-        self.assertIn(ds.queryVolt, self.conn.queries)
-        # The exact command sent must include (@1), not a bare query.
-        self.assertTrue(ds.queryCurr.endswith("(@1)"),
-                        f"FETC:CURR missing channel: {ds.queryCurr!r}")
-        self.assertTrue(ds.queryVolt.endswith("(@1)"),
-                        f"FETC:VOLT missing channel: {ds.queryVolt!r}")
+        self.assertIn(":fetc:arr:curr? (@1)", self.conn.queries)
+        self.assertIn(":fetc:arr:volt? (@1)", self.conn.queries)
+        # :init must also carry the channel selector.
+        self.assertIn(":init (@1)", self.conn.writes)
+
+    def test_channel_2_substitutes_into_scpi(self):
+        """When the user picks Channel 2 in the IV tab, the
+        :init and :FETCh commands are issued against (@2)."""
+        self.conn.set_response(":fetc:arr:curr? (@2)", "0.1")
+        self.conn.set_response(":fetc:arr:volt? (@2)", "0.0")
+        acq = IVAcquisition("smu", v_start=0.0, v_stop=0.0, v_step=0.1, channel=2)
+        acq.set_connection(self.conn)
+        acq.run()
+        self.assertIn(":fetc:arr:curr? (@2)", self.conn.queries)
+        self.assertIn(":fetc:arr:volt? (@2)", self.conn.queries)
+        self.assertIn(":init (@2)", self.conn.writes)
+
+    def test_invalid_channel_clamped_to_range(self):
+        """A bogus channel value (0, 3, -1) is clamped into the
+        1..2 range so the SMU never sees a malformed (@N)."""
+        for bad in (0, 3, -1, 99):
+            acq = IVAcquisition("smu", channel=bad)
+            self.assertIn(acq.channel, (1, 2))
 
     def test_run_returns_parsed_arrays(self):
         self.conn.set_response(ds.queryCurr, "1e-6,2e-6,3e-6,4e-6")

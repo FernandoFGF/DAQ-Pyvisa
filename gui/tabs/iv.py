@@ -108,6 +108,44 @@ def iv_update_connected(self) -> None:
         )
 
 
+def _iv_on_channel_toggle(self, channel: int) -> None:
+    """Make the channel check boxes mutually exclusive.
+
+    Picking a channel clears the other one so the SMU is
+    always driven on exactly one channel. The Keithley 2470
+    commands (``(@1)`` / ``(@2)``) follow the SMU channel
+    numbering; we surface that in the GUI as well.
+    """
+    var_ch1 = getattr(self, "iv_channel_var_ch1", None)
+    var_ch2 = getattr(self, "iv_channel_var_ch2", None)
+    if var_ch1 is None or var_ch2 is None:
+        return
+    if channel == 1 and var_ch1.get():
+        var_ch2.set(False)
+    elif channel == 2 and var_ch2.get():
+        var_ch1.set(False)
+    else:
+        # The user unchecked the only selected channel. Force
+        # channel 1 back on so the SMU always has a target.
+        if not var_ch1.get() and not var_ch2.get():
+            var_ch1.set(True)
+
+
+def iv_selected_channel(self) -> int:
+    """Return the SMU channel the user selected (1 or 2).
+
+    Defaults to 1 when the check boxes are in an unexpected
+    state. The value is passed to the adapter as
+    ``channel=...`` and substituted into the ``(@N)`` token
+    of the :FETCh:ARR:CURR? and :init queries.
+    """
+    var_ch1 = getattr(self, "iv_channel_var_ch1", None)
+    var_ch2 = getattr(self, "iv_channel_var_ch2", None)
+    if var_ch1 is None or var_ch2 is None:
+        return 1
+    return 2 if var_ch2.get() else 1
+
+
 def setting_iv(self):
     """
     Construye la pestaña IV Curves (DAQ + Analysis).
@@ -161,10 +199,34 @@ def setting_iv(self):
     self.iv_step = ctk.CTkLabel(self.optionsIV, text="Set voltage step:", anchor="w")
     self.iv_step.grid(row=5, column=0, padx=20, pady=(5, 0))
     self.vStep = ctk.CTkEntry(self.optionsIV, placeholder_text="0.05V defalut")
-    self.vStep.grid(row=6, column=0, padx=20, pady=(0,20))
+    self.vStep.grid(row=6, column=0, padx=20, pady=(0,5))
+
+    # Channel selector. The Keithley 2470 has two channels; we
+    # let the user pick which one to drive. The selection is a
+    # pair of check boxes so the two can be flipped
+    # independently; ``start_iv`` reads the checked one and
+    # passes it to the adapter.
+    self.iv_channel_label = ctk.CTkLabel(
+        self.optionsIV, text="Channel:", anchor="w",
+    )
+    self.iv_channel_label.grid(row=7, column=0, padx=20, pady=(10, 0), sticky="w")
+    self.iv_channel_frame = ctk.CTkFrame(self.optionsIV, fg_color="transparent")
+    self.iv_channel_frame.grid(row=7, column=1, padx=(0, 20), pady=(10, 0), sticky="w")
+    self.iv_channel_var_ch1 = ctk.BooleanVar(value=True)
+    self.iv_channel_var_ch2 = ctk.BooleanVar(value=False)
+    self.iv_channel_ch1 = ctk.CTkCheckBox(
+        self.iv_channel_frame, text="Channel 1", variable=self.iv_channel_var_ch1,
+        command=lambda: _iv_on_channel_toggle(self, 1),
+    )
+    self.iv_channel_ch1.grid(row=0, column=0, padx=(0, 12), pady=2, sticky="w")
+    self.iv_channel_ch2 = ctk.CTkCheckBox(
+        self.iv_channel_frame, text="Channel 2", variable=self.iv_channel_var_ch2,
+        command=lambda: _iv_on_channel_toggle(self, 2),
+    )
+    self.iv_channel_ch2.grid(row=0, column=1, padx=0, pady=2, sticky="w")
 
     self.start_button = ctk.CTkButton(self.optionsIV, text="Start", command=self.start_iv)
-    self.start_button.grid(row=7, column=0, padx=20, pady=(10,20), columnspan=2, sticky="s")
+    self.start_button.grid(row=8, column=0, padx=20, pady=(10,20), columnspan=2, sticky="s")
 
     self.plotIV = ctk.CTkFrame(self.tabview.tab("IV Curves"))
     self.plotIV.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")

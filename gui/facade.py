@@ -47,6 +47,7 @@ class DAQGUIFunctions:
     def start_iv_full(self, v_start: float, v_stop: float, v_step: float,
                       option: str = "SMU",
                       smu_conn=None,
+                      channel: int = 1,
                       results_callback: Optional[Callable[[dict], None]] = None,
                       error_callback: Optional[Callable[[str], None]] = None) -> None:
         """Run an IV measurement in a background thread using IVAcquisition.
@@ -56,6 +57,11 @@ class DAQGUIFunctions:
         via ``set_connection`` so we do not open a second VISA session
         on top of the one the Connect card is holding. When ``None``
         (legacy behaviour) the adapter opens its own connection.
+
+        ``channel`` selects the SMU channel (1 or 2). The Keithley
+        2470 needs the channel selector on the :init and :FETCh
+        commands; without it the SMU errors with a Settings conflict
+        and returns a single value instead of the full sweep.
         """
 
         from acquisition.iv_acquisition import IVAcquisition
@@ -68,7 +74,8 @@ class DAQGUIFunctions:
         def _run():
             try:
                 acq = IVAcquisition("smu", v_start=v_start, v_stop=v_stop,
-                                    v_step=v_step, config=self.config.config)
+                                    v_step=v_step, config=self.config.config,
+                                    channel=channel)
                 if smu_conn is not None:
                     acq.set_connection(smu_conn)
                 result = acq.run()
