@@ -134,15 +134,25 @@ def _do_qr(self):
     _, ax = _get_canvas(self)
 
     # First press: no markers yet. Render the positive section
-    # with two pickable endpoints and wait for the user to
-    # either press Qr again (we will fit between the current
-    # endpoint positions) or drag the markers first.
+    # with two pickable endpoints, both inside the measured
+    # range so they are visible from the start. The user can
+    # drag either one to pick the segment they want, then
+    # press Qr again to compute the fit.
     if getattr(self, "iv_qr_endpoints", None) is None:
-        # Initial endpoints at the curve bounds. The user can
-        # drag them anywhere along the curve before pressing
-        # Qr again to compute the fit.
-        self.iv_qr_endpoints = (float(v_pos[0]), float(v_pos[-1]))
-        self.gui_funcs.plot_qr_initial(ax, v_pos, i_pos)
+        # Both endpoints start at the first positive sample
+        # (the smallest v > 0.01 V, e.g. ~0.1 V). They appear
+        # stacked on top of each other; dragging the right
+        # marker opens the fit window. Picking the first
+        # sample keeps both markers inside the data even
+        # when the user is zoomed in, so they never fall
+        # outside the curve.
+        v_start = float(v_pos[0])
+        i_start = float(i_pos[0])
+        self.iv_qr_endpoints = (v_start, v_start)
+        self.gui_funcs.plot_qr_initial(
+            ax, v_pos, i_pos,
+            v1=v_start, i1=i_start, v2=v_start, i2=i_start,
+        )
         _install_qr_marker_drag_handlers(self)
         try:
             self.canvas.draw()

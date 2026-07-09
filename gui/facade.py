@@ -302,14 +302,18 @@ class DAQGUIFunctions:
         plot_vbr(ax, v_filtered, i_filtered, vbr_point,
                  dydx_over_y, v_for_ratio)
 
-    def plot_qr_initial(self, ax, v_positive, i_positive) -> None:
+    def plot_qr_initial(self, ax, v_positive, i_positive, v1=None,
+                        i1=None, v2=None, i2=None) -> None:
         """Draw the positive IV section with two pickable red
-        markers at the curve endpoints. The GUI installs a
-        PickEvent handler on those markers so the user can
-        drag them along the curve and re-fit by pressing the
-        Qr button again."""
+        markers. When ``v1 / i1 / v2 / i2`` are provided the
+        markers start at those positions; otherwise they
+        default to the curve endpoints. The GUI installs a
+        PickEvent handler on the markers so the user can
+        drag them along the curve and re-fit by pressing
+        the Qr button again."""
         from analysis.iv_analysis import plot_qr_initial
-        plot_qr_initial(ax, v_positive, i_positive)
+        plot_qr_initial(ax, v_positive, i_positive,
+                        v1=v1, i1=i1, v2=v2, i2=i2)
 
     def plot_qr_with_fit(self, ax, v_positive, i_positive,
                          v_fit, i_fit) -> None:

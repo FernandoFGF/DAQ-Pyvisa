@@ -187,8 +187,8 @@ class PlotHelpersTests(unittest.TestCase):
         v = np.linspace(0.0, 2.0, 30)
         i = 1e-5 * v
         plot_qr_initial(self.ax, v, i)
-        # Two red markers (the Line2D "o" series) plus the
-        # IV line plus the dashed fit line.
+        # Two red markers (one Line2D per dot) plus the IV
+        # line; no dashed fit line on the initial plot.
         red_markers = [
             line for line in self.ax.get_lines()
             if line.get_color() == "r" and line.get_marker() == "o"
@@ -196,6 +196,26 @@ class PlotHelpersTests(unittest.TestCase):
         self.assertEqual(len(red_markers), 2)
         for marker in red_markers:
             self.assertIsNotNone(marker.get_picker())
+
+    def test_plot_qr_initial_accepts_explicit_endpoints(self):
+        """When the GUI starts with both endpoints at the
+        first positive sample, the markers must be drawn
+        at that position (not at the curve bounds) so
+        neither falls outside the data when the user is
+        zoomed in."""
+        from analysis.iv_analysis import plot_qr_initial
+        v = np.linspace(0.0, 2.0, 30)
+        i = 1e-5 * v
+        # Both endpoints at the first positive sample.
+        plot_qr_initial(self.ax, v, i,
+                        v1=v[0], i1=i[0], v2=v[0], i2=i[0])
+        red_markers = [
+            line for line in self.ax.get_lines()
+            if line.get_color() == "r" and line.get_marker() == "o"
+        ]
+        self.assertEqual(len(red_markers), 2)
+        for marker in red_markers:
+            self.assertAlmostEqual(marker.get_xdata()[0], v[0])
 
     def test_plot_qr_with_fit_draws_the_final_line(self):
         from analysis.iv_analysis import plot_qr_with_fit

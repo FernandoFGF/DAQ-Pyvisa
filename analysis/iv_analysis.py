@@ -243,10 +243,19 @@ def plot_vbr(ax, v_filtered, i_filtered, vbr_point, dydx_over_y, v_for_ratio) ->
     ax.autoscale(enable=True, axis="both", tight=True)
 
 
-def plot_qr_initial(ax, v_positive, i_positive) -> None:
+def plot_qr_initial(ax, v_positive, i_positive, v1=None, i1=None,
+                    v2=None, i2=None) -> None:
     """Draw the positive section of the IV curve with two
-    user-movable points (the future QR fit endpoints) at the
-    min and max of the positive section.
+    user-movable points (the future QR fit endpoints).
+
+    By default the two markers are placed at the curve
+    bounds (endpoint 1 at the smallest v, endpoint 2 at the
+    largest v). The GUI passes explicit ``v1 / i1 / v2 / i2``
+    when the user has dragged the markers before, or when
+    the initial defaults should sit inside the data (e.g.
+    both at the first positive sample so they never fall
+    outside the measured range even when the user is
+    zoomed in).
 
     The two red dots are pickable / draggable by the user
     (the GUI installs a PickEvent handler on them). When the
@@ -257,20 +266,28 @@ def plot_qr_initial(ax, v_positive, i_positive) -> None:
     ax.set_xlabel("Voltios")
     ax.set_ylabel("Amperios")
     ax.plot(v_positive, i_positive, "b-", label="IV (positiva)")
-    if v_positive.size >= 2:
-        v_min, v_max = float(v_positive[0]), float(v_positive[-1])
-        i_min, i_max = float(i_positive[0]), float(i_positive[-1])
-        # Two separate pickable markers (one Line2D per dot)
-        # so the GUI's pick handler can address each one
-        # independently. We deliberately do NOT draw the
-        # initial dashed fit line here: the user must press
-        # the Qr button after moving the markers to see the
-        # fit, so the first press is just a 'select the
-        # segment you want to fit' prompt.
-        ax.plot([v_min], [i_min], "ro", markersize=10, picker=5,
-                label="Endpoint 1")
-        ax.plot([v_max], [i_max], "ro", markersize=10, picker=5,
-                label="Endpoint 2")
+    # Resolve the four endpoint coordinates. The defaults
+    # land at the curve bounds, which the user can then
+    # drag inward. Callers that want a specific initial
+    # position (e.g. both at the first sample) pass them
+    # explicitly.
+    if v1 is None:
+        v1 = float(v_positive[0])
+        i1 = float(i_positive[0])
+    if v2 is None:
+        v2 = float(v_positive[-1])
+        i2 = float(i_positive[-1])
+    # Two separate pickable markers (one Line2D per dot)
+    # so the GUI's pick handler can address each one
+    # independently. We deliberately do NOT draw the
+    # initial dashed fit line here: the user must press
+    # the Qr button after moving the markers to see the
+    # fit, so the first press is just a 'select the
+    # segment you want to fit' prompt.
+    ax.plot([v1], [i1], "ro", markersize=10, picker=5,
+            label="Endpoint 1")
+    ax.plot([v2], [i2], "ro", markersize=10, picker=5,
+            label="Endpoint 2")
     ax.legend(loc="upper left", fontsize=8)
     ax.autoscale(enable=True, axis="both", tight=True)
 
