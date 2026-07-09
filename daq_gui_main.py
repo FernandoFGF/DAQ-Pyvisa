@@ -144,14 +144,20 @@ try:
             # user can still tile or resize the window freely.
             self.title("SiPMs UGR DAQ")
             self.geometry(f"{1200}x{700}")
-            try:
-                # ``zoomed`` is the Tk / Windows idiom for
-                # ``maximised``. On macOS it is a no-op; on X11
-                # some window managers ignore it but the user
-                # can still resize the window.
-                self.state("zoomed")
-            except Exception:
-                pass
+            # Defer the maximisation to after the window has
+            # been mapped. ``self.state("zoomed")`` issued
+            # during ``__init__`` is sometimes lost on Windows
+            # when the geometry is also set in the same tick;
+            # scheduling it on the idle queue via ``after(0,
+            # ...)`` guarantees the maximise sticks and the
+            # window opens exactly as if the user had clicked
+            # the "Maximise" button.
+            def _maximize_once_idle():
+                try:
+                    self.state("zoomed")
+                except Exception:
+                    pass
+            self.after(0, _maximize_once_idle)
 
             # Configure grid layout (4x4)
             self.grid_columnconfigure(0, weight=2)

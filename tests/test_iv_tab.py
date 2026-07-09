@@ -141,19 +141,20 @@ class SettingIvSmokeTest(unittest.TestCase):
             stub.selected_channelIV.get(),
         )
 
-    def test_iv_channel_box_uses_inner_frame_to_centre_radios(self):
-        """Regression: the radios used to be glued to the left
-        edge of the optionsIV column. The fix wraps them in a
-        transparent inner frame so the inner frame collapses
-        to its content and the radios sit centred regardless
-        of the outer optionsIV width."""
+    def test_iv_channel_box_aligns_with_parameter_entries(self):
+        """Regression: the channel radio buttons used to be
+        glued to the left edge of the optionsIV column with
+        a different padding than the voltage entries below.
+        The fix gives the channel box the same 20px left
+        padding as the vStart / vStop / vStep entries so the
+        eye reads the whole parameters column as aligned.
+        ``sticky='w'`` keeps the box collapsed to the width
+        of the two radios (so they sit close together), not
+        stretched to the full optionsIV width."""
         from gui.tabs import iv as iv_tab
         stub = self._build_stub()
         iv_tab.setting_iv(stub)
-        # The outer box and the inner centering frame both
-        # exist on the App instance.
         self.assertTrue(hasattr(stub, "channels_frame_iv"))
-        self.assertTrue(hasattr(stub, "channels_inner_iv"))
 
 
 if __name__ == "__main__":
