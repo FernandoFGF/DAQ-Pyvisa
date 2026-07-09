@@ -359,6 +359,14 @@ def _on_success(self, widgets: dict, idn: str) -> None:
             _arbgen_mod.arbgen_update_connected(self)
         except Exception:
             pass
+    # If this card is the SMU, refresh the IV tab header so the
+    # "SMU: <*IDN?>" label shows the freshly-detected instrument.
+    if widgets.get("instrument_id") == "smu":
+        try:
+            import gui.tabs.iv as _iv_mod
+            _iv_mod.iv_update_connected(self)
+        except Exception:
+            pass
 
 
 def _on_error(self, widgets: dict, err: str) -> None:
@@ -406,6 +414,13 @@ def _do_disconnect(self, instrument_id: str, idn_label, connect_btn,
         try:
             import gui.tabs.arbgen as _arbgen_mod
             _arbgen_mod.arbgen_update_connected(self)
+        except Exception:
+            pass
+    # Same for the SMU on the IV tab.
+    if instrument_id == "smu":
+        try:
+            import gui.tabs.iv as _iv_mod
+            _iv_mod.iv_update_connected(self)
         except Exception:
             pass
 

@@ -83,6 +83,31 @@ def _do_complete(self):
     self.gui_funcs.plot_iv(ax, v, i)
 
 
+def iv_update_connected(self) -> None:
+    """Re-read the SMU connection and repaint the IV tab header.
+
+    Called from the Connect tab success / disconnect handlers
+    so the "SMU: <*IDN?>" line always reflects the live
+    state. When no SMU is connected the line shows a grey
+    placeholder and the Start button is disabled.
+    """
+    label = getattr(self, "iv_smu_label", None)
+    if label is None:
+        return
+    card = (self.connect_cards.get("smu")
+            if isinstance(getattr(self, "connect_cards", None), dict) else None)
+    conn = card.get("connection") if isinstance(card, dict) else None
+    idn = card.get("idn") if isinstance(card, dict) else None
+    if conn is not None and idn:
+        label.configure(
+            text=f"SMU: {idn}", text_color="#2ea043",
+        )
+    else:
+        label.configure(
+            text="SMU: (not connected)", text_color="#a0a0a0",
+        )
+
+
 def setting_iv(self):
     """
     Construye la pestaña IV Curves (DAQ + Analysis).
@@ -103,9 +128,25 @@ def setting_iv(self):
     self.optionsIV = ctk.CTkFrame(self.tabviewIV.tab("DAQ"))
     self.optionsIV.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
-    self.options = ctk.CTkOptionMenu(self.optionsIV,
-                                    dynamic_resizing=False, values=["SMU", "Classic"])
-    self.options.grid(row=0, column=0, padx=20, pady=(20, 0))
+    # The legacy SMU / Classic selector was removed; the SMU
+    # card in the Connect tab is now the only way to choose the
+    # source. We show the raw ``*IDN?`` of the connected SMU
+    # (or a placeholder) so the user always knows which
+    # instrument will be driven when they press Start.
+    self.iv_smu_label = ctk.CTkLabel(
+        self.optionsIV, text="SMU: (not connected)",
+        anchor="w", font=("", 12, "bold"), text_color="#a0a0a0",
+    )
+    self.iv_smu_label.grid(row=0, column=0, padx=20, pady=(20, 0), sticky="w")
+    # Back-compat attribute: legacy code paths and tests still
+    # read ``self.options.get()`` to decide what to do. There
+    # is no other SMU path today, so we hard-code "SMU".
+    self.options = ctk.CTkOptionMenu(
+        self.optionsIV, dynamic_resizing=False, values=["SMU"],
+    )
+    self.options.set("SMU")
+    self.options.grid(row=0, column=1, padx=20, pady=(20, 0))
+    self.options.grid_remove()
 
     self.iv_start = ctk.CTkLabel(self.optionsIV, text="Set voltage start:", anchor="w")
     self.iv_start.grid(row=1, column=0, padx=20, pady=(10, 0))

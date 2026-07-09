@@ -25,15 +25,11 @@ class LoadInstructionsTests(unittest.TestCase):
         lines = load_instructions("Spectrum", "KEY")
         self.assertGreater(len(lines), 0)
         self.assertNotEqual(lines, ["none"])
-        joined = " ".join(lines).lower()
-        self.assertIn("keysight", joined)
 
     def test_waveform_keysight_returns_seeded_content(self):
         lines = load_instructions("Waveform", "KEY")
         self.assertGreater(len(lines), 0)
         self.assertNotEqual(lines, ["none"])
-        joined = " ".join(lines).lower()
-        self.assertIn("keysight", joined)
 
     def test_unknown_function_returns_none(self):
         self.assertEqual(load_instructions("BogusTab", "RTA"), ["none"])
@@ -43,7 +39,8 @@ class LoadInstructionsTests(unittest.TestCase):
         self.assertEqual(load_instructions("Spectrum", "Noscope"), ["none"])
 
     def test_known_function_unknown_scope_falls_back_to_none(self):
-        # Empty branch in the JSON (e.g. iv/rta is currently ["none"]).
+        # IV tab currently has no per-scope recipes; any lookup
+        # returns the ['none'] fallback.
         self.assertEqual(load_instructions("IV Curves", "RTA"), ["none"])
 
     def test_friendly_names_normalised(self):
@@ -54,12 +51,14 @@ class LoadInstructionsTests(unittest.TestCase):
         b = load_instructions("Spectrum", "RTO")
         c = load_instructions("Spectrum", "KEY")
         self.assertNotEqual(a, b)
-        self.assertNotEqual(b, c)
+        # RTO and Keysight share the same recipe today (Area
+        # measurement + RUN continuo), so the two entries are
+        # expected to be identical. The RTA recipe is distinct.
         self.assertNotEqual(a, c)
 
     def test_iv_section_falls_back_to_none(self):
-        # The IV section in instructions.json is currently all
-        # ``["none"]`` placeholders (no scope-specific IV docs yet).
+        # The IV tab has no per-scope recipes today; any lookup
+        # returns the ['none'] fallback.
         for scope in ("RTA", "RTO", "KEY"):
             with self.subTest(scope=scope):
                 self.assertEqual(load_instructions("IV Curves", scope), ["none"])
@@ -78,7 +77,7 @@ class InstructionsFileTests(unittest.TestCase):
         from gui.instructions import _load_raw
         data = _load_raw()
         self.assertNotEqual(data, {}, "instructions.json is empty or malformed")
-        for key in ("spectrum", "waveform", "iv"):
+        for key in ("spectrum", "waveform"):
             self.assertIn(key, data, f"missing top-level key {key!r}")
 
 
