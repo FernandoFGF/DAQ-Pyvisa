@@ -179,26 +179,25 @@ def setting_iv(self):
 
     # Channel selector. The Keithley 2470 has two channels; we
     # let the user pick which one to drive. Mirrors the layout
-    # used by the Spectrum / Waveform tabs: a row of
-    # CTkRadioButton widgets sharing a single StringVar, hosted
-    # in a two-column frame so the two options are centred on
-    # the same row.
+    # used by the Spectrum / Waveform tabs: two CTkRadioButton
+    # widgets sharing a single StringVar, hosted in a small
+    # opaque frame so the two options sit close together
+    # instead of being pulled to the column edges.
     self.selected_channelIV = ctk.StringVar(value="CH1")
-    self.channels_frame_iv = ctk.CTkFrame(self.optionsIV, fg_color="transparent")
+    self.channels_frame_iv = ctk.CTkFrame(self.optionsIV)
     self.channels_frame_iv.grid(
-        row=1, column=0, padx=20, pady=(8, 4), columnspan=2, sticky="ew",
+        row=1, column=0, columnspan=2, padx=10, pady=(10, 5), sticky="nsew",
     )
-    self.channels_frame_iv.grid_columnconfigure((0, 1), weight=1)
     self.ch1IV = ctk.CTkRadioButton(
         self.channels_frame_iv, text="CH1",
         variable=self.selected_channelIV, value="CH1",
     )
-    self.ch1IV.grid(row=0, column=0, padx=6, pady=4)
+    self.ch1IV.grid(row=0, column=0, padx=(10, 5), pady=(10, 5))
     self.ch2IV = ctk.CTkRadioButton(
         self.channels_frame_iv, text="CH2",
         variable=self.selected_channelIV, value="CH2",
     )
-    self.ch2IV.grid(row=0, column=1, padx=6, pady=4)
+    self.ch2IV.grid(row=0, column=1, padx=(5, 10), pady=(10, 5))
 
     self.iv_start = ctk.CTkLabel(self.optionsIV, text="Set voltage start:", anchor="w")
     self.iv_start.grid(row=2, column=0, padx=20, pady=(10, 0))
