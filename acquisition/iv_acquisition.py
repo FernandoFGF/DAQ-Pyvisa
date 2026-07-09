@@ -1,22 +1,52 @@
 """
 IV acquisition adapter.
 
-Replicates the SCPI logic of ``daq_gui_func.start_iv`` (the option=="SMU"
-branch, lines 51-90) without touching the GUI. The adapter takes a
-``v_start``, ``v_stop`` and ``v_step``, configures the SMU for a stepped
-voltage sweep, runs it and returns the (voltage, current) arrays.
+Replicates the SCPI logic of ``daq_gui_func.start_iv`` (the
+option == "SMU" branch, lines 51-90) without touching the GUI.
+The adapter takes a ``v_start``, ``v_stop`` and ``v_step``,
+configures the SMU for a stepped voltage sweep, runs it and
+returns the (voltage, current) arrays.
 
-The SMU is opened through ``InstrumentConnection`` so tests can inject a
-``FakeConnection`` (see ``tests/fake_connection.py``).
+The SMU is opened through ``InstrumentConnection`` so tests can
+inject a ``FakeConnection`` (see ``tests/fake_connection.py``).
+
+Command sequence (matches the legacy line by line, using the
+tokens from ``acquisition.scpi_dictionary`` which is the modern
+home of the old ``dictionary_SCPI.py``):
+
+  *RST
+  :SOUR:VOLT:MODE VOLT
+  :SOUR:VOLT:MODE SWE
+  :SOUR:SWE:STA SING
+  :SOUR:SWE:SPAC LIN
+  :SOUR:VOLT:STAR <v_start>
+  :SOUR:VOLT:STOP <v_stop>
+  :SOUR:VOLT:POIN <points>
+  :sens:func "curr"
+  :sens:curr:nplc 0.1
+  :sens:curr:prot 0.01
+  :trig:sour aint
+  :trig:coun <points>
+  :outp on
+  :init (@1)
+  <block on *OPC?>
+  :fetc:arr:curr? (@1)
+  :fetc:arr:volt? (@1)
+  :outp off
+
+The (@1) channel selector is critical: the SMU 2470 returns a
+single value or an error when the channel specifier is missing,
+so the legacy code always included it. We do the same.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Sequence
 
 import numpy as np
 
+from acquisition import scpi_dictionary as ds
 from acquisition.connection import InstrumentConnection, open_pyvisa
 from acquisition.save import save_iv_text
 
@@ -79,46 +109,75 @@ class IVAcquisition:
         conn = self._conn
         assert conn is not None
 
-        # Legacy: ``del smu.timeout`` clears the VISA timeout. The adapter
-        # handles ``__delattr__("timeout")`` by setting it to None.
+        # Legacy: ``del smu.timeout`` clears the VISA timeout. The
+        # adapter handles ``__delattr__("timeout")`` by setting the
+        # resource timeout to None.
         try:
             del conn.timeout  # type: ignore[attr-defined]
         except AttributeError:
             pass
 
-        # Reset + configure for stepped voltage sweep (legacy sequence)
-        conn.write("*RST")
-        conn.write(":SOUR:FUNC:MODE VOLT")
-        conn.write(":SOUR:SWE:MODE SWE")
-        conn.write(":SOUR:SWE:STA SING")
-        conn.write(":SOUR:SWE:SPAC LIN")
+        # Reset + configure for stepped voltage sweep. The legacy
+        # command set lives in ``acquisition.scpi_dictionary`` (formerly
+        # ``old/dictionary_SCPI.py``); we use those tokens verbatim
+        # so any future update to the dictionary automatically
+        # propagates to the new adapter.
+        conn.write(ds.rst)
+        conn.write(ds.voltMode)
+        conn.write(ds.sweepMode)
+        conn.write(ds.sweepSing)
+        conn.write(ds.sweepLin)
         conn.write(f":SOUR:VOLT:STAR {self.v_start}")
         conn.write(f":SOUR:VOLT:STOP {self.v_stop}")
+        # The legacy used int() and assumed v_step divides the span
+        # exactly. We do the same so the SMU-side POIN matches the
+        # TRIG:COUN we send next.
         points = int(abs(self.v_start - self.v_stop) / self.v_step)
         conn.write(f":SOUR:VOLT:POIN {points}")
-
-        # Auto-range current measurement
-        conn.write(":SENS:CURR:RSEN AUTO")
-        conn.write(":SENS:CURR:RANG:AUTO ON")
-        conn.write(":SENS:FUNC 'CURR'")
-        # Trigger: count == points
-        conn.write(":TRIG:SOUR INT")
-        conn.write(f":TRIG:COUN {points}")
-
-        # Output on, init, wait
-        conn.write(":OUTP ON")
-        conn.write(":INIT")
+        # Auto-range current measurement, NPLC 0.1, 10 mA protection.
+        # The legacy 2470 setup that produced the curves the user
+        # signed off on.
+        conn.write(ds.smuAuto1)
+        conn.write(ds.smuAuto2)
+        conn.write(ds.smuAuto3)
+        # Trigger: arm-and-trigger by the SMU's own sequencer
+        # (``aint``), fire ``points`` times.
+        conn.write(ds.smuTrig)
+        conn.write(f":trig:coun {points}")
+        # Output on, init, wait for completion.
+        conn.write(ds.smuOn)
+        conn.write(ds.smuInit)
         self._wait_for_complete(conn)
+        # Read back both arrays from channel 1. The ``(@1)`` is
+        # non-optional on the 2470: without it the SMU errors with
+        # ``-221,Settings conflict`` and returns a single value
+        # instead of the full sweep, which is what produced the
+        # broken curve the user reported.
+        i_result = conn.query(ds.queryCurr)
+        v_result = conn.query(ds.queryVolt)
+        # Output off.
+        conn.write(ds.smuOff)
 
-        # Read back
-        i_raw = conn.query(":FETC:ARR:CURR?")
-        i_values = [s for s in i_raw.replace("\n", "").split(",") if s]
-        v_raw = conn.query(":FETC:ARR:VOLT?")
-        v_values = [s for s in v_raw.replace("\n", "").split(",") if s]
-
-        # Output off
-        conn.write(":OUTP OFF")
-
+        # Parse ``-1.23E-04,-1.24E-04,...`` into float lists. The
+        # legacy used ``split(",")`` then rstripped the trailing
+        # newline; we do the same and then drop any empty fragments
+        # so a stray trailing comma does not raise on float().
+        i_values = [s for s in i_result.replace("\n", "").split(",") if s]
+        v_values = [s for s in v_result.replace("\n", "").split(",") if s]
+        # Defensive: when the SMU returns fewer values than we asked
+        # for (e.g. transient comms error), pad with NaN so the GUI
+        # plot still renders instead of misaligning two arrays of
+        # different lengths. Pad up to the longer of the two so the
+        # two arrays always have the same length; if both are
+        # shorter than the configured ``points`` we still leave
+        # them at the longer length so the curves overlay.
+        n_i, n_v = len(i_values), len(v_values)
+        if n_i != n_v:
+            target = max(n_i, n_v, points)
+            print(f"[IV] SMU returned {n_i} current and {n_v} voltage "
+                  f"values (expected {points}); padding with NaN to {target}.")
+            i_values = i_values + ["nan"] * (target - n_i)
+            v_values = v_values + ["nan"] * (target - n_v)
         return IVResult(
             voltage=np.array([float(v) for v in v_values], dtype=float),
             current=np.array([float(i) for i in i_values], dtype=float),
@@ -127,10 +186,12 @@ class IVAcquisition:
 
     @staticmethod
     def _wait_for_complete(conn: InstrumentConnection) -> None:
-        """Poll ``*OPC?`` until the SMU returns '1'.
+        """Poll ``*OPC?`` until the SMU returns ``'1'``.
 
-        Replaces ``lab_module.waiting``. Bounded to a generous number of
-        iterations to avoid hanging forever in tests.
+        Replaces ``lab_module.waiting``. Bounded to a generous
+        number of iterations so a real hardware hang cannot lock
+        the worker thread forever, and so unit tests do not run
+        away.
         """
         for _ in range(100_000):
             if conn.query("*OPC?").strip() == "1":
