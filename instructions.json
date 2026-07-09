@@ -1,13 +1,9 @@
 {
   "spectrum": {
     "rta": [
-      "Configurar la función matemática F(x).",
-      "Pulsa el botón Math.",
-      "Activa M1 (Estado = ON).",
-      "Configura: Fuente C1, Operación Integral, Unidad Vs.",
-      "Regresa a la pantalla principal.",
-      "Configura los cursores: Fuente M1, Tipo Marcador V, Sobre traza ON.",
-      "Mueve el marcador con el mando giratorio para recorrer la función matemática."
+      "Configurar una matematica de area.",
+      "Encender cursores y configurarlos como fuente M1 y tipo Marcador V",
+      "Se necesita run continuo"
     ],
     "rto": [
       "Configurar una measurement de Area.",
