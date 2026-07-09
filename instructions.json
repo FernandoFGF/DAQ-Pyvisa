@@ -20,22 +20,14 @@ Activa Sobre traza.
 Mueve el marcador con el mando giratorio para recorrer la función matemática"
     ],
     "rto": [
-      "Spectrum - RTO (R&S RTO2000 series)",
-      "1. Press 'Connect' on the RTO card in the Connect tab.",
-      "2. Open the Spectrum tab and set 'Set entries'.",
-      "3. Pick the channel (Ch1..Ch4).",
-      "4. Press Start. The adapter issues CURSor1:SOURce + MEAS1:RES:ACT? per sample.",
-      "5. The live histogram redraws every 100 samples.",
-      "6. Open the Analysis tab and press 'Finder peaks' to overlay the peaks and read the list of peak positions."
+      "Configurar una measurement de Area.",
+      "Tener en cuenta que va a capturar toda la pantalla.",
+      "Se necesita RUN continuo."
     ],
     "keysight": [
-      "Spectrum - Keysight",
-      "1. Press 'Connect' on the Keysight card in the Connect tab.",
-      "2. Open the Spectrum tab and set 'Set entries'.",
-      "3. Pick the channel (Ch1..Ch4).",
-      "4. Press Start. The adapter issues :SYSTem:HEADer OFF + :MEASure:STATistics CURRENT + :MEASure1:RESults? per sample.",
-      "5. The live histogram redraws every 100 samples.",
-      "6. Open the Analysis tab and press 'Finder peaks' to overlay the peaks and read the list of peak positions."
+      "Configurar una measurement de Area.",
+      "Tener en cuenta que va a capturar toda la pantalla.",
+      "Se necesita RUN continuo."
     ]
   },
   "waveform": {
@@ -50,20 +42,9 @@ Mueve el marcador con el mando giratorio para recorrer la función matemática"
       Pulsar en single y pulsar en Start"
     ],
     "keysight": [
-      "Waveform - Keysight",
-      "1. Press 'Connect' on the Keysight card in the Connect tab.",
-      "2. Open the Waveform tab. Optionally set 'Set time to acquire' (in seconds; 0 = immediate).",
-      "3. Pick the channel (Ch1..Ch4).",
-      "4. Type a file name in the right option_frame. If empty, a default-YYYY-MM-DD-HH-MM-SS name is used.",
-      "5. Press Start. The adapter queries :ACQuire:SEGMented:COUNT? and iterates :ACQuire:SEGMented:INDex + :WAVeform:DATA? + :WAVeform:SEGMented:TTAG?.",
-      "6. The terminal prints [Waveform] progress: i/n segments (pct%) while running.",
-      "7. Press Stop to cooperatively cancel; the current segment finishes, then the worker exits.",
-      "8. The Analysis tab shows Calculate Dcr, a slider to step through each segment waveform, and +/- buttons."
+      "Configurar Adquisition para las tomas que queremos.
+      Configurar el tamaño de cada muestra
+      Pulsar en single y pulsar en Start"
     ]
-  },
-  "iv": {
-    "rta": ["none"],
-    "rto": ["none"],
-    "keysight": ["none"]
   }
 }
