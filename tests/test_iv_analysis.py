@@ -215,6 +215,45 @@ class PlotHelpersTests(unittest.TestCase):
         plot_complete(self.ax, v, i)
         self.assertEqual(len(self.ax.get_lines()), 1)
 
+    def test_plot_complete_with_vbr_marker_keeps_the_red_dot(self):
+        from analysis.iv_analysis import plot_complete
+        v = np.array([-1.0, -0.5, 0.0, 0.5, 1.0])
+        i = np.array([-1e-5, -5e-6, 0.0, 5e-6, 1e-5])
+        plot_complete(self.ax, v, i, vbr_point=(-0.5, -5e-6))
+        # IV line + Vbr marker
+        self.assertEqual(len(self.ax.get_lines()), 2)
+        # The red dot must be at the right voltage.
+        red_dots = [
+            line for line in self.ax.get_lines()
+            if line.get_color() == "r" and line.get_marker() == "o"
+        ]
+        self.assertEqual(len(red_dots), 1)
+        self.assertAlmostEqual(red_dots[0].get_xdata()[0], -0.5)
+
+    def test_plot_complete_drops_secondary_axes_from_vbr(self):
+        """Regression: when the user computes Vbr first (which
+        creates a twinx for the derivative) and then presses
+        'Draw complete', the secondary axis must be removed
+        so the full-curve plot is not overlaid on the
+        derivative."""
+        from analysis.iv_analysis import plot_complete, plot_vbr
+        v_neg = np.linspace(-20.0, -0.5, 50)
+        i_neg = -1e-7 * np.exp(-v_neg / 5.0)
+        plot_vbr(
+            self.ax, v_neg, i_neg,
+            vbr_point=(-10.0, float(i_neg[20])),
+            dydx_over_y=np.linspace(0.1, 0.9, 49),
+            v_for_ratio=v_neg[1:],
+        )
+        # Vbr created a twinx (secondary axis).
+        self.assertGreater(len(self.fig.axes), 1)
+        v = np.array([-1.0, -0.5, 0.0, 0.5, 1.0])
+        i = np.array([-1e-5, -5e-6, 0.0, 5e-6, 1e-5])
+        plot_complete(self.ax, v, i)
+        # plot_complete removed the twinx, leaving just the
+        # primary axes.
+        self.assertEqual(len(self.fig.axes), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

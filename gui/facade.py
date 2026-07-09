@@ -318,10 +318,16 @@ class DAQGUIFunctions:
         from analysis.iv_analysis import plot_qr_with_fit
         plot_qr_with_fit(ax, v_positive, i_positive, v_fit, i_fit)
 
-    def plot_complete(self, ax, v_values, i_values) -> None:
-        """Draw the full IV curve (positive + negative sections)."""
+    def plot_complete(self, ax, v_values, i_values, vbr_point=None) -> None:
+        """Draw the full IV curve (positive + negative sections).
+
+        When ``vbr_point`` is given, a red dot is drawn at
+        that point on the negative section so the user can
+        keep the Vbr marker when switching to the complete
+        view.
+        """
         from analysis.iv_analysis import plot_complete
-        plot_complete(ax, v_values, i_values)
+        plot_complete(ax, v_values, i_values, vbr_point=vbr_point)
 
     def find_histogram_peaks(self, data, bins: int = 50, prominence: float = 80) -> dict:
         from analysis.spectrum_analysis import find_histogram_peaks as _fhp

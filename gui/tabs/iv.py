@@ -62,6 +62,11 @@ def _do_vbr(self):
     self.vbr_Output.insert("0.0", f"{result['max_x']:.4g} V")
     self.vbr_Output.configure(state="disabled")
 
+    # Remember the Vbr point so ``_do_complete`` can keep
+    # the red dot on the negative section when the user
+    # switches to the full-curve view.
+    self.iv_vbr_point = (result["max_x"], result["max_y"])
+
     _, ax = _get_canvas(self)
     self.gui_funcs.plot_vbr(
         ax,
@@ -82,23 +87,57 @@ def _do_qr(self):
     """QR analysis with user-movable endpoints.
 
     First press: plots the positive section with two red
-    draggable dots at the min and max of the positive section.
-    Subsequent presses: re-fit the segment between the current
-    endpoint positions (which the user may have dragged along
-    the curve).
+    draggable dots at the min and max of the positive section,
+    zoomed in. The user drags the markers to pick the segment
+    they want to fit, then presses Qr again. This is the
+    classic 'select first, fit on demand' workflow that lets
+    the user avoid the legacy failure mode where the default
+    range picked the wrong segment.
+
+    Subsequent presses: re-fit the segment between the
+    endpoints the user has positioned. The fit uses the
+    current endpoint positions, not the original defaults.
     """
     v, i = _parse_iv_aux(self)
     if v is None:
         print("Necesitas realizar algun analisis primero..")
         return
 
-    # If the user has not moved the markers yet, start with
-    # the default range (min / max of the positive section).
-    endpoints = getattr(self, "iv_qr_endpoints", None)
-    v_range = None
-    if endpoints is not None:
-        v_range = (endpoints[0], endpoints[1])
+    # Cache the positive section so the click that just
+    # shows the markers and the click that fits the segment
+    # both share the same data.
+    pos_mask = np.asarray(v) > 0.01
+    v_pos = np.asarray(v, dtype=float)[pos_mask]
+    i_pos = np.asarray(i, dtype=float)[pos_mask]
+    if v_pos.size < 2:
+        print("No hay suficientes valores positivos para QR.")
+        return
 
+    _, ax = _get_canvas(self)
+
+    # First press: no markers yet. Render the positive section
+    # with two pickable endpoints and wait for the user to
+    # either press Qr again (we will fit between the current
+    # endpoint positions) or drag the markers first.
+    if getattr(self, "iv_qr_endpoints", None) is None:
+        # Initial endpoints at the curve bounds. The user can
+        # drag them anywhere along the curve before pressing
+        # Qr again to compute the fit.
+        self.iv_qr_endpoints = (float(v_pos[0]), float(v_pos[-1]))
+        self.gui_funcs.plot_qr_initial(ax, v_pos, i_pos)
+        self._install_qr_marker_drag_handlers()
+        try:
+            self.canvas.draw()
+            self.canvas.flush_events()
+        except Exception:
+            pass
+        return
+
+    # Subsequent press: fit between the current endpoint
+    # positions. If the user has dragged the markers, those
+    # new positions drive the fit; if not, the initial
+    # endpoints above are used.
+    v_range = self.iv_qr_endpoints
     result = self.gui_funcs.qr_for(v, i, v_range=v_range)
     if not result["ok"]:
         print(result["message"])
@@ -107,25 +146,10 @@ def _do_qr(self):
     self.qr_Output.delete("1.0", "end")
     self.qr_Output.insert("0.0", f"{result['qr_value']} Ω")
     self.qr_Output.configure(state="disabled")
-
-    _, ax = _get_canvas(self)
-    v_pos = result["v_positive"]
-    i_pos = result["i_positive"]
-    v_fit = result["v_fit"]
-    i_fit = result["i_fit"]
-    # First press: render the pickable endpoints so the user
-    # can drag them. Subsequent presses: render the final fit.
-    if endpoints is None:
-        self.gui_funcs.plot_qr_initial(ax, v_pos, i_pos)
-        # Snapshot the default endpoints so the next press
-        # knows the range even before the user has dragged.
-        self.iv_qr_endpoints = (v_fit[0], v_fit[1])
-        self._install_qr_marker_drag_handlers()
-    else:
-        self.gui_funcs.plot_qr_with_fit(ax, v_pos, i_pos, v_fit, i_fit)
-        # Update the endpoint snapshot so the next press uses
-        # the new range (in case the user has dragged).
-        self.iv_qr_endpoints = (v_fit[0], v_fit[1])
+    self.gui_funcs.plot_qr_with_fit(
+        ax, result["v_positive"], result["i_positive"],
+        result["v_fit"], result["i_fit"],
+    )
     try:
         self.canvas.draw()
         self.canvas.flush_events()
@@ -219,7 +243,8 @@ def _do_complete(self):
         print("Necesitas realizar algun analisis primero..")
         return
     _, ax = _get_canvas(self)
-    self.gui_funcs.plot_complete(ax, v, i)
+    vbr_point = getattr(self, "iv_vbr_point", None)
+    self.gui_funcs.plot_complete(ax, v, i, vbr_point=vbr_point)
     try:
         self.canvas.draw()
         self.canvas.flush_events()
@@ -229,10 +254,13 @@ def _do_complete(self):
 
 def _reset_qr_state(self) -> None:
     """Clear the QR drag state so the next Qr press starts
-    fresh (default endpoints, default range)."""
+    fresh (default endpoints, default range). Also drops the
+    cached Vbr point so a fresh IV curve does not show a
+    stale red dot on the negative section."""
     self.iv_qr_endpoints = None
     self.iv_qr_markers = None
     self._qr_drag_handlers_installed = False
+    self.iv_vbr_point = None
 
 
 def iv_update_connected(self) -> None:
@@ -375,12 +403,13 @@ def setting_iv(self):
     self.start_button = ctk.CTkButton(self.optionsIV, text="Start", command=self.start_iv)
     self.start_button.grid(row=8, column=0, padx=20, pady=(15, 20), columnspan=2, sticky="s")
 
-    # QR drag state. The interactive QR plot uses two
-    # user-movable markers to define the fit range; this
-    # attribute caches the current endpoints and the marker
-    # artists so the next Qr press can read the new range
-    # without re-prompting. Reset to None on every fresh
-    # acquisition.
+    # QR drag state and cached Vbr point. The interactive QR
+    # plot uses two user-movable markers to define the fit
+    # range; these attributes cache the current endpoints,
+    # the marker artists, and the last computed Vbr point so
+    # the next analysis press can read the new range without
+    # re-prompting. Reset to None on every fresh acquisition
+    # (see daq_gui_main._on_results -> _reset_qr_state).
     _reset_qr_state(self)
 
     self.plotIV = ctk.CTkFrame(self.tabview.tab("IV Curves"))

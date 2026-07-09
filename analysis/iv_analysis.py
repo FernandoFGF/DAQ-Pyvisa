@@ -97,8 +97,7 @@ def calculate_qr(v_values: np.ndarray, i_values: np.ndarray,
     Algorithm:
       1. Keep positive section (v > 0.01).
       2. If v_range given, keep only the samples in that range
-         (with a small epsilon to avoid floating-point
-         boundary issues). Otherwise keep v > QR_POSITIVE_THRESHOLD.
+         (inclusive). Otherwise keep v > QR_POSITIVE_THRESHOLD.
       3. slope = (Imax - Imin) / (Vmax - Vmin).
       4. qr = round(1/slope, 1).
 
@@ -167,15 +166,12 @@ def calculate_qr(v_values: np.ndarray, i_values: np.ndarray,
 def plot_iv(ax, v_values, i_values, vbr_point=None, qr_line=None, dydx_over_y=None,
             v_for_ratio=None) -> None:
     """
-    Draw the IV curve on ax, optionally overlaying Vbr marker and Qr fit line.
-
-    Matches the legacy visual:
-      - Main axis: xlabel 'Voltios', ylabel 'Amperios', plot(v, i)
-      - If vbr_point given: red dot at that point
-      - If qr_line given: red dashed line with circle markers
-      - If dydx_over_y given: secondary y-axis (right) with red line
+    Legacy all-in-one plot. The new analysis paths use the
+    dedicated helpers below; this entry point is kept for
+    callers that still pass the legacy combination of
+    arguments (e.g. the old ``plot_iv`` facade pass-through).
     """
-    ax.cla()
+    _reset_axes(ax)
     ax.set_xlabel("Voltios")
     ax.set_ylabel("Amperios")
     ax.plot(v_values, i_values)
@@ -188,16 +184,35 @@ def plot_iv(ax, v_values, i_values, vbr_point=None, qr_line=None, dydx_over_y=No
         ax2.plot(v_for_ratio, dydx_over_y, "r-")
 
 
+def _reset_axes(ax) -> None:
+    """Clear the primary axes and remove any twinx children.
+
+    The Vbr plot helper creates a twinx for the secondary
+    y-axis (the derivative); ``ax.cla()`` only clears the
+    primary axes so the twinx would survive the next plot
+    and overlay the new data. The Qr / Vbr / complete
+    helpers call ``_reset_axes`` before drawing so the
+    figure only shows what the current analysis wants.
+    """
+    fig = ax.get_figure()
+    # Drop any secondary axes that share the same X axis.
+    for other in list(fig.axes):
+        if other is not ax and other.get_shared_x_axes().joined(other, ax):
+            other.remove()
+    ax.cla()
+
+
 def plot_vbr(ax, v_filtered, i_filtered, vbr_point, dydx_over_y, v_for_ratio) -> None:
     """Draw the Vbr analysis on its own axes.
 
     Shows the negative portion of the IV curve (blue) plus the
     (dI/dV)/I derivative curve in red on a secondary y-axis.
-    A red dot marks the Vbr point on both the IV curve and the
-    derivative (it is plotted on the secondary axis so the
-    user can see which minimum of the derivative was picked).
+    A red dot marks the Vbr point on both the IV curve and
+    the derivative (it is plotted on the secondary axis so
+    the user can see which minimum of the derivative was
+    picked).
     """
-    ax.cla()
+    _reset_axes(ax)
     ax.set_xlabel("Voltios")
     ax.set_ylabel("Amperios")
     ax.plot(v_filtered, i_filtered, "b-", label="IV (negativa)")
@@ -219,10 +234,11 @@ def plot_vbr(ax, v_filtered, i_filtered, vbr_point, dydx_over_y, v_for_ratio) ->
     # Combined legend: primary axis only (matplotlib does not
     # span legends across twinx cleanly).
     ax.legend(loc="upper left", fontsize=8)
+    ax.autoscale(enable=True, axis="both", tight=True)
 
 
 def plot_qr_initial(ax, v_positive, i_positive) -> None:
-    """Draw the positive section of the IV curve with the two
+    """Draw the positive section of the IV curve with two
     user-movable points (the future QR fit endpoints) at the
     min and max of the positive section.
 
@@ -231,25 +247,26 @@ def plot_qr_initial(ax, v_positive, i_positive) -> None:
     user presses the QR button again the IV analyzer
     re-computes the fit between the new endpoints.
     """
-    ax.cla()
+    _reset_axes(ax)
     ax.set_xlabel("Voltios")
     ax.set_ylabel("Amperios")
     ax.plot(v_positive, i_positive, "b-", label="IV (positiva)")
     if v_positive.size >= 2:
         v_min, v_max = float(v_positive[0]), float(v_positive[-1])
         i_min, i_max = float(i_positive[0]), float(i_positive[-1])
-        # Initial dashed line through the two endpoints so
-        # the user can see what the default fit looks like.
-        ax.plot([v_min, v_max], [i_min, i_max], "r--",
-                linewidth=1, label="Ajuste inicial")
         # Two separate pickable markers (one Line2D per dot)
         # so the GUI's pick handler can address each one
-        # independently.
+        # independently. We deliberately do NOT draw the
+        # initial dashed fit line here: the user must press
+        # the Qr button after moving the markers to see the
+        # fit, so the first press is just a 'select the
+        # segment you want to fit' prompt.
         ax.plot([v_min], [i_min], "ro", markersize=10, picker=5,
                 label="Endpoint 1")
         ax.plot([v_max], [i_max], "ro", markersize=10, picker=5,
                 label="Endpoint 2")
     ax.legend(loc="upper left", fontsize=8)
+    ax.autoscale(enable=True, axis="both", tight=True)
 
 
 def plot_qr_with_fit(ax, v_positive, i_positive, v_fit, i_fit) -> None:
@@ -260,7 +277,7 @@ def plot_qr_with_fit(ax, v_positive, i_positive, v_fit, i_fit) -> None:
     are highlighted in red so the user can see exactly which
     segment of the curve produced the fit.
     """
-    ax.cla()
+    _reset_axes(ax)
     ax.set_xlabel("Voltios")
     ax.set_ylabel("Amperios")
     ax.plot(v_positive, i_positive, "b-", label="IV (positiva)")
@@ -268,18 +285,26 @@ def plot_qr_with_fit(ax, v_positive, i_positive, v_fit, i_fit) -> None:
         ax.plot(v_fit, i_fit, "r-", linewidth=2, label="Recta QR")
         ax.plot(v_fit, i_fit, "ro", markersize=8)
     ax.legend(loc="upper left", fontsize=8)
+    ax.autoscale(enable=True, axis="both", tight=True)
 
 
-def plot_complete(ax, v_values, i_values) -> None:
+def plot_complete(ax, v_values, i_values, vbr_point=None) -> None:
     """Draw the full IV curve: positive and negative sections.
 
     The whole measured sweep is rendered so the user sees
     the complete SiPM response, with the breakdown kink
     around 0 V and the linear quenching region on the
-    positive side.
+    positive side. The Vbr marker is preserved (a red dot
+    on the negative section) if the user has computed one
+    before; the secondary derivative axis and the QR fit
+    overlay are dropped.
     """
-    ax.cla()
+    _reset_axes(ax)
     ax.set_xlabel("Voltios")
     ax.set_ylabel("Amperios")
     ax.plot(v_values, i_values, "b-", label="IV completa")
+    if vbr_point is not None:
+        ax.plot(vbr_point[0], vbr_point[1], "ro", markersize=8,
+                label=f"Vbr = {vbr_point[0]:.4g} V")
     ax.legend(loc="upper left", fontsize=8)
+    ax.autoscale(enable=True, axis="both", tight=True)
