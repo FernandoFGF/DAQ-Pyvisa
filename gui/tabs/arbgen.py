@@ -1,19 +1,32 @@
 """
 Arbitrary Waveform Generator tab.
 
-Hardware target: Siglent SDG2122X
-(*IDN: Siglent Technologies,SDG2122X,SDG2XCAC6R0231,2.01.01.35R3B2).
+Supports two hardware families. The active dialect is
+detected from the ``*IDN?`` response of the connected AWG
+(see :mod:`acquisition.arbgen_dialects`):
 
-UI layout: two side-by-side panels, one per channel. Each panel
-has its own complete set of controls:
+  * **Siglent SDG2122X**  - default. ``*IDN?`` starts with
+    ``Siglent Technologies``.
+  * **Agilent / Keysight 33612A** - the user can connect a
+    33600A-series AWG and the tab switches to the Agilent
+    SCPI dialect automatically.
 
-  - Wave type dropdown: Sine, Square, Triangle, Pulse train.
+The dropdown labels and the SCPI tokens per label depend on
+the dialect, and so do the per-channel widgets (e.g. phase
+is hidden in PULSE mode for both, and the Agilent dropdown
+does not offer Triangle because the 33600A does not have
+one).
+
+UI layout: two side-by-side panels, one per channel. Each
+panel has its own complete set of controls:
+
+  - Wave type dropdown (options vary by dialect).
   - Frequency (Hz) text input.
   - Amplitude (Vpp) text input.
   - Impedance slide switch: HiZ / 50 Ohm (sent immediately).
   - Offset (V) text input.
-  - Phase (deg) text input.
-  - Pulse width (seconds) text input.
+  - Phase (deg) text input  (hidden in PULSE mode).
+  - Pulse width (seconds) text input  (hidden outside PULSE).
   - Update button (sends the six waveform parameters above).
   - Output enable slide switch (immediate, no Apply gate).
 
@@ -23,9 +36,9 @@ amp, offset, phase, width, impedance, output switch and
 update button). No channel selector: the user works on both
 channels at once.
 
-A small "Connected: Siglent SDG2122X" indicator at the top
-of the tab names the target instrument so the user knows
-which SCPI dialect the buttons speak.
+A small "Connected: <model>" indicator at the top of the tab
+names the target instrument so the user knows which SCPI
+dialect the buttons speak.
 
 The actual SCPI commands are sent through
 ``acquisition/arbgen_acquisition.py``.
@@ -35,29 +48,45 @@ from __future__ import annotations
 import customtkinter as ctk
 
 from acquisition.arbgen_acquisition import (
+    DEFAULT_DIALECT,
     apply_arbgen_params,
+    detect_dialect,
+    identify_awg,
     set_arbgen_load,
     set_arbgen_output,
     set_arbgen_pulse_width,
 )
+from gui.instructions import build_instructions_icon as _build_instructions_icon
+from acquisition.arbgen_dialects import (
+    ArbgenDialect,
+    wave_labels_for,
+    wave_token_for,
+)
 
 
-# Wave-type dropdown options. Keys are the SCPI WVTP tokens for
-# the Siglent SDG2122X; values are the user-facing labels.
-WAVEFORM_OPTIONS = [
-    ("Sine", "SINE"),
-    ("Square", "SQUARE"),
-    ("Triangle", "RAMP"),   # Siglent uses RAMP for triangle.
-    ("Pulse train", "PULSE"),
-]
-WAVEFORM_LABELS = [label for label, _ in WAVEFORM_OPTIONS]
-WAVEFORM_BY_LABEL = dict(WAVEFORM_OPTIONS)
+# Sentinel for the initial / unconnected state. We re-detect
+# the dialect as soon as the user connects the AWG in the
+# Connect tab; until then the panel renders with the
+# Siglent defaults so the rest of the tab does not need to
+# special-case the unconnected path.
+DEFAULT_CONNECTED_LABEL = DEFAULT_DIALECT.label
 
 
-# Display name shown in the "Connected:" indicator. Updated
-# automatically from the Connect tab when the user connects
-# the AWG; falls back to this string otherwise.
-DEFAULT_CONNECTED_LABEL = "Siglent SDG2122X"
+# Map a "human-friendly" pulse-train label to the SCPI token
+# the GUI uses to decide whether to show the phase / width
+# inputs. Both dialects share the same user-facing label.
+_PULSE_LABEL_SIGLENT = "Pulse train"
+_PULSE_LABELS = {"Pulse train", "Pulse"}
+
+
+def _is_pulse_label(dialect: ArbgenDialect, label: str) -> bool:
+    """Return True if ``label`` selects the pulse-train wave type.
+
+    The Siglent dropdown labels it ``Pulse train``; the
+    Agilent dropdown labels it ``Pulse train`` too. We accept
+    either form to be tolerant of past / future dialects.
+    """
+    return label in _PULSE_LABELS
 
 
 def _add_labeled_entry(parent, row: int, label: str, default: str = "",
@@ -105,11 +134,16 @@ def _make_slide_switch(parent, row: int, label: str, options,
     return sw
 
 
-def _build_channel_panel(parent: ctk.CTkFrame, channel: str) -> dict:
+def _build_channel_panel(parent: ctk.CTkFrame, channel: str,
+                         dialect: ArbgenDialect) -> dict:
     """Build one per-channel control panel.
 
     Returns a dict of widgets keyed by attribute name so the
-    action handlers can read each control's value.
+    action handlers can read each control's value. The
+    ``phase`` and ``width`` entries carry their labels in the
+    same dict (``phase_label``, ``width_label``) so the
+    per-wave handler can hide / show them without rebuilding
+    the panel.
     """
     panel = ctk.CTkFrame(parent)
     panel.grid_columnconfigure((0, 1), weight=1)
@@ -125,9 +159,17 @@ def _build_channel_panel(parent: ctk.CTkFrame, channel: str) -> dict:
     ctk.CTkLabel(panel, text="Waveform", font=("", 12, "bold"),
                  anchor="w").grid(row=1, column=0, columnspan=2, padx=20,
                                   pady=(8, 4), sticky="w")
+    wave_labels = wave_labels_for(dialect)
     waveform = _add_labeled_option(
         panel, row=2, label="Type:",
-        values=WAVEFORM_LABELS, default="Sine", width=160,
+        values=wave_labels,
+        default=wave_labels[0], width=160,
+    )
+    # Refresh phase / width visibility whenever the user changes
+    # the wave type so PULSE hides the phase field and other
+    # modes hide the pulse width.
+    waveform.configure(
+        command=lambda _value, ch=channel: _refresh_pulse_visibility(self, ch)
     )
 
     # --- Frequency / Amplitude / Offset / Phase / Width text inputs -------
@@ -137,9 +179,14 @@ def _build_channel_panel(parent: ctk.CTkFrame, channel: str) -> dict:
     freq = _add_labeled_entry(panel, row=4, label="Frequency (Hz):", default="1000")
     amp = _add_labeled_entry(panel, row=5, label="Amplitude (Vpp):", default="1.0")
     offset = _add_labeled_entry(panel, row=6, label="Offset (V):", default="0.0")
-    phase = _add_labeled_entry(panel, row=7, label="Phase (deg):", default="0")
-    width = _add_labeled_entry(panel, row=8, label="Pulse width (s):",
-                               default="10E-6")
+    phase_label = ctk.CTkLabel(panel, text="Phase (deg):", anchor="w")
+    phase_label.grid(row=7, column=0, padx=(20, 6), pady=4, sticky="w")
+    phase = ctk.CTkEntry(panel, width=140, placeholder_text="0")
+    phase.grid(row=7, column=1, padx=(0, 20), pady=4, sticky="w")
+    width_label = ctk.CTkLabel(panel, text="Pulse width (s):", anchor="w")
+    width_label.grid(row=8, column=0, padx=(20, 6), pady=4, sticky="w")
+    width = ctk.CTkEntry(panel, width=140, placeholder_text="10E-6")
+    width.grid(row=8, column=1, padx=(0, 20), pady=4, sticky="w")
 
     # --- Impedance slide switch (immediate) -------------------------------
     impedance = _make_slide_switch(
@@ -169,6 +216,18 @@ def _build_channel_panel(parent: ctk.CTkFrame, channel: str) -> dict:
     output.set("OFF")
     output.grid(row=11, column=1, padx=(6, 20), pady=(4, 12), sticky="w")
 
+    # Initial state of the phase / width visibility: depends on
+    # whether the default wave type is pulse.
+    if _is_pulse_label(dialect, wave_labels[0]):
+        # Default is pulse (e.g. an Agilent unit the user
+        # never touched). Hide phase, show width.
+        phase_label.grid_remove()
+        phase.grid_remove()
+    else:
+        # Default is non-pulse. Hide width, show phase.
+        width_label.grid_remove()
+        width.grid_remove()
+
     return {
         "frame": panel,
         "channel": channel,
@@ -177,15 +236,53 @@ def _build_channel_panel(parent: ctk.CTkFrame, channel: str) -> dict:
         "amp": amp,
         "offset": offset,
         "phase": phase,
+        "phase_label": phase_label,
         "width": width,
+        "width_label": width_label,
         "impedance": impedance,
         "output": output,
         "update_button": update_button,
     }
 
 
+def _refresh_pulse_visibility(self, channel: str) -> None:
+    """Show / hide the phase and width inputs based on the active wave.
+
+    * Pulse-train mode  -> hide ``phase``, show ``width``.
+    * Any other mode    -> show ``phase``, hide ``width``.
+
+    The user can flip back and forth freely; we just call
+    ``grid_remove`` on the rows that should disappear and
+    ``grid`` to bring them back. Tk does not animate this so
+    the change is instant.
+    """
+    panel = self.arbgen_panels.get(channel)
+    if panel is None:
+        return
+    label = panel["waveform"].get()
+    dialect = self.arbgen_dialect
+    is_pulse = _is_pulse_label(dialect, label)
+    if is_pulse:
+        panel["phase_label"].grid_remove()
+        panel["phase"].grid_remove()
+        panel["width_label"].grid()
+        panel["width"].grid()
+    else:
+        panel["width_label"].grid_remove()
+        panel["width"].grid_remove()
+        panel["phase_label"].grid()
+        panel["phase"].grid()
+
+
 def setting_arbgen(self) -> None:
-    """Build the ArbGen tab with two side-by-side channel panels."""
+    """Build the ArbGen tab with two side-by-side channel panels.
+
+    The dialect is set to the default (Siglent) at construction
+    time. Once the user connects an AWG in the Connect tab,
+    the dialog is re-detected (see
+    :func:`arbgen_update_connected`) and the panel is rebuilt
+    so the wave-type dropdown matches the connected scope.
+    """
     # WIP suffix in the tab title for clarity.
     if "ArbGen" not in self.tabview._tab_dict:
         self.tabview.add("ArbGen")
@@ -202,15 +299,48 @@ def setting_arbgen(self) -> None:
         font=("", 12, "bold"), text_color="#2ea043", anchor="w",
     )
     self.arbgen_connected_label.grid(
-        row=0, column=0, columnspan=2, padx=14, pady=(10, 4), sticky="w",
+        row=0, column=0, padx=14, pady=(10, 4), sticky="w",
     )
+
+    # Instructions icon. The instructions window resolver reads
+    # ``self.arbgen_dialect.key`` to pick the right recipe
+    # (Siglent vs Agilent) from ``instructions.json``.
+    self.instructionsArb_button = _build_instructions_icon(
+        tab, "ArbGen",
+    )
+    self.instructionsArb_button.grid(
+        row=0, column=1, padx=(0, 14), pady=(10, 4), sticky="e",
+    )
+    self._arbgen_active_label = lambda: self.arbgen_dialect.key
+
+    self.arbgen_dialect: ArbgenDialect = DEFAULT_DIALECT
 
     # Two scrollable channel panels, side by side, below the indicator.
     self.arbgen_panels: dict[str, dict] = {}
+    _populate_panels(self, tab, self.arbgen_dialect)
+
+
+def _populate_panels(self, tab, dialect: ArbgenDialect) -> None:
+    """(Re)build the per-channel panels for ``dialect``.
+
+    Called once on tab construction and again whenever the
+    user connects an AWG whose detected dialect differs from
+    the current one. We destroy the existing panel frames
+    first so the rebuild is clean.
+    """
+    # Drop any previously built panels so the new ones can use
+    # the same grid cells.
+    for ch, panel in list(self.arbgen_panels.items()):
+        try:
+            panel["frame"].destroy()
+        except Exception:
+            pass
+    self.arbgen_panels = {}
+
     for col, channel in enumerate(("CH1", "CH2")):
         panel_frame = ctk.CTkScrollableFrame(tab)
         panel_frame.grid(row=1, column=col, padx=8, pady=8, sticky="nsew")
-        widgets = _build_channel_panel(panel_frame, channel)
+        widgets = _build_channel_panel(panel_frame, channel, dialect)
         widgets["frame"].pack(fill="both", expand=True, padx=4, pady=4)
         # Wire the per-channel buttons to the per-channel handlers.
         widgets["update_button"].configure(
@@ -234,6 +364,31 @@ def setting_arbgen(self) -> None:
         self.arbgen_panels[channel] = widgets
 
 
+def arbgen_update_connected(self) -> None:
+    """Re-detect the AWG model and rebuild the panel if the dialect changed.
+
+    Called from the Connect tab success handler so that
+    connecting a different AWG switches the SCPI dialect on
+    the fly. The connected indicator is updated with the
+    raw ``*IDN?`` response so the user can see exactly which
+    model the program recognised.
+    """
+    conn = _arbgen_live_conn(self)
+    idn = identify_awg(conn)
+    if idn:
+        self.arbgen_connected_label.configure(
+            text=f"Connected: {idn}", text_color="#2ea043",
+        )
+    else:
+        self.arbgen_connected_label.configure(
+            text="Connected: (none)", text_color="#a0a0a0",
+        )
+    new_dialect = detect_dialect(conn) if conn is not None else DEFAULT_DIALECT
+    if new_dialect.key != self.arbgen_dialect.key:
+        self.arbgen_dialect = new_dialect
+        _populate_panels(self, self.tabview.tab("ArbGen"), self.arbgen_dialect)
+
+
 # ---- Action handlers (called by the buttons / slide switches) -------------
 #
 # These read the per-channel control values from
@@ -244,10 +399,11 @@ def setting_arbgen(self) -> None:
 def _read_panel_params(self, channel: str) -> dict:
     """Build the params dict for a channel from the live widgets."""
     panel = self.arbgen_panels[channel]
+    label = panel["waveform"].get()
     return {
         "channel": channel,
-        "waveform_label": panel["waveform"].get(),
-        "waveform_scpi": WAVEFORM_BY_LABEL.get(panel["waveform"].get(), "SINE"),
+        "waveform_label": label,
+        "waveform_scpi": wave_token_for(self.arbgen_dialect, label),
         "frequency_hz": panel["freq"].get(),
         "amplitude_vpp": panel["amp"].get(),
         "impedance": panel["impedance"].get(),
@@ -274,7 +430,8 @@ def arbgen_update(self, channel: str) -> None:
           f"width={params['width_s']}s")
     try:
         apply_arbgen_params(params, config=self.config.config,
-                            conn=_arbgen_live_conn(self))
+                            conn=_arbgen_live_conn(self),
+                            dialect=self.arbgen_dialect)
     except Exception as e:
         print(f"[ArbGen] apply_arbgen_params failed: {e}")
 
@@ -313,7 +470,8 @@ def arbgen_toggle_output(self, channel: str, value: str = None) -> None:
     try:
         set_arbgen_output(channel=channel, on=(state == "ON"),
                           config=self.config.config,
-                          conn=_arbgen_live_conn(self))
+                          conn=_arbgen_live_conn(self),
+                          dialect=self.arbgen_dialect)
     except Exception as e:
         print(f"[ArbGen] set_arbgen_output failed: {e}")
 
@@ -323,8 +481,9 @@ def arbgen_change_load(self, channel: str, value: str) -> None:
     print(f"[ArbGen] Load {value} on {channel}")
     try:
         set_arbgen_load(channel=channel, impedance=value,
-                         config=self.config.config,
-                         conn=_arbgen_live_conn(self))
+                        config=self.config.config,
+                        conn=_arbgen_live_conn(self),
+                        dialect=self.arbgen_dialect)
     except Exception as e:
         print(f"[ArbGen] set_arbgen_load failed: {e}")
 
@@ -343,7 +502,8 @@ def arbgen_change_width(self, channel: str) -> None:
     try:
         set_arbgen_pulse_width(channel=channel, width_s=width,
                                 config=self.config.config,
-                                conn=_arbgen_live_conn(self))
+                                conn=_arbgen_live_conn(self),
+                                dialect=self.arbgen_dialect)
     except Exception as e:
         print(f"[ArbGen] set_arbgen_pulse_width failed: {e}")
 

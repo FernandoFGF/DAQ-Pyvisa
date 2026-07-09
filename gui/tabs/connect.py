@@ -347,6 +347,14 @@ def _on_success(self, widgets: dict, idn: str) -> None:
                     method()
                 except Exception:
                     pass
+    # If this card is the AWG, let the ArbGen tab re-detect the
+    # SCPI dialect (Siglent vs Agilent) from the *IDN? response
+    # and rebuild its wave-type dropdown to match.
+    if widgets.get("instrument_id") == "arbGen" and hasattr(self, "arbgen_update_connected"):
+        try:
+            self.arbgen_update_connected()
+        except Exception:
+            pass
 
 
 def _on_error(self, widgets: dict, err: str) -> None:
@@ -388,6 +396,13 @@ def _do_disconnect(self, instrument_id: str, idn_label, connect_btn,
                     method()
                 except Exception:
                     pass
+    # If this card is the AWG, refresh the connected indicator
+    # so the user sees "(none)" instead of a stale model name.
+    if instrument_id == "arbGen" and hasattr(self, "arbgen_update_connected"):
+        try:
+            self.arbgen_update_connected()
+        except Exception:
+            pass
 
 
 def setting_connect(self) -> None:

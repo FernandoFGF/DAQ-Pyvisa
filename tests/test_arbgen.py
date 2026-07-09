@@ -20,17 +20,25 @@ import customtkinter as ctk
 from gui.tabs import arbgen as arbgen_tab
 from gui.tabs.arbgen import (
     DEFAULT_CONNECTED_LABEL,
-    WAVEFORM_BY_LABEL,
-    WAVEFORM_LABELS,
 )
 from acquisition import arbgen_acquisition as arbgen_acq
 from acquisition.arbgen_acquisition import (
+    SIGLENT,
     apply_arbgen_params,
     set_arbgen_load,
     set_arbgen_output,
     set_arbgen_pulse_width,
+    wave_labels_for,
+    wave_token_for,
 )
 from tests.fake_connection import FakeConnection
+
+
+# Backwards-compat shim for the old module-level constants: the
+# Siglent dialect is the default, so the dropdown labels are
+# exactly the Siglent wave list.
+WAVEFORM_LABELS = wave_labels_for(SIGLENT)
+WAVEFORM_BY_LABEL = {label: wave_token_for(SIGLENT, label) for label in WAVEFORM_LABELS}
 
 
 class WaveformOptionsTests(unittest.TestCase):
