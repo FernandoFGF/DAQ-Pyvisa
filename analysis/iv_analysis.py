@@ -200,6 +200,12 @@ def _reset_axes(ax) -> None:
         if other is not ax and other.get_shared_x_axes().joined(other, ax):
             other.remove()
     ax.cla()
+    # Re-tag the primary axes so the GUI's ``_get_canvas``
+    # helper can find it even after a cla() wiped the
+    # ylabel. We use the same string the plot helpers
+    # would have set ('Amperios') to keep a single
+    # canonical label.
+    ax.set_ylabel("Amperios")
 
 
 def plot_vbr(ax, v_filtered, i_filtered, vbr_point, dydx_over_y, v_for_ratio) -> None:

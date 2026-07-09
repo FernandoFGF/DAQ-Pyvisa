@@ -41,11 +41,29 @@ def _parse_iv_aux(self):
 
 
 def _get_canvas(self):
-    """Return (figure, axes) for the IV plot, rebuilding the
-    canvas if the user has never run an acquisition yet."""
+    """Return (figure, axes) for the IV plot.
+
+    The Vbr plot helper creates a twinx (secondary y-axis
+    for the derivative). After that call, ``fig.gca()``
+    returns the twinx instead of the primary axes, and any
+    subsequent plot on that axes is hidden from the user's
+    view. We pick the primary axes explicitly: the one
+    whose ``get_twinx`` has not been used to spawn a
+    sibling (a twinx is always the *secondary* axes that
+    appears later in ``fig.axes``; the original is the
+    first one). We look for the axes whose ylabel is the
+    primary one ('Amperios') which the Vbr / QR / Complete
+    helpers always set; if no axes matches, we fall back
+    to the first axes in the figure.
+    """
     fig = self.canvas.figure
-    ax = fig.gca()
-    return fig, ax
+    for candidate in fig.axes:
+        if candidate.get_ylabel() == "Amperios":
+            return fig, candidate
+    # Fallback: pick the first axes.
+    if fig.axes:
+        return fig, fig.axes[0]
+    return fig, fig.gca()
 
 
 def _do_vbr(self):
@@ -125,7 +143,7 @@ def _do_qr(self):
         # Qr again to compute the fit.
         self.iv_qr_endpoints = (float(v_pos[0]), float(v_pos[-1]))
         self.gui_funcs.plot_qr_initial(ax, v_pos, i_pos)
-        self._install_qr_marker_drag_handlers()
+        _install_qr_marker_drag_handlers(self)
         try:
             self.canvas.draw()
             self.canvas.flush_events()
