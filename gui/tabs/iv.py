@@ -202,31 +202,25 @@ def setting_iv(self):
     self.vStep.grid(row=6, column=0, padx=20, pady=(0,5))
 
     # Channel selector. The Keithley 2470 has two channels; we
-    # let the user pick which one to drive. The selection is a
-    # pair of check boxes so the two can be flipped
-    # independently; ``start_iv`` reads the checked one and
-    # passes it to the adapter.
-    self.iv_channel_label = ctk.CTkLabel(
-        self.optionsIV, text="Channel:", anchor="w",
-    )
-    self.iv_channel_label.grid(row=7, column=0, padx=20, pady=(10, 0), sticky="w")
-    self.iv_channel_frame = ctk.CTkFrame(self.optionsIV, fg_color="transparent")
-    self.iv_channel_frame.grid(row=7, column=1, padx=(0, 20), pady=(10, 0), sticky="w")
+    # let the user pick which one to drive with a pair of
+    # mutually-exclusive check boxes. They sit on the same row
+    # as the vStep entry so the whole parameters column stays
+    # aligned, and there is no "Channel:" label.
     self.iv_channel_var_ch1 = ctk.BooleanVar(value=True)
     self.iv_channel_var_ch2 = ctk.BooleanVar(value=False)
     self.iv_channel_ch1 = ctk.CTkCheckBox(
-        self.iv_channel_frame, text="Channel 1", variable=self.iv_channel_var_ch1,
+        self.optionsIV, text="CH1", variable=self.iv_channel_var_ch1,
         command=lambda: _iv_on_channel_toggle(self, 1),
     )
-    self.iv_channel_ch1.grid(row=0, column=0, padx=(0, 12), pady=2, sticky="w")
+    self.iv_channel_ch1.grid(row=6, column=1, padx=(0, 12), pady=(0, 5), sticky="w")
     self.iv_channel_ch2 = ctk.CTkCheckBox(
-        self.iv_channel_frame, text="Channel 2", variable=self.iv_channel_var_ch2,
+        self.optionsIV, text="CH2", variable=self.iv_channel_var_ch2,
         command=lambda: _iv_on_channel_toggle(self, 2),
     )
-    self.iv_channel_ch2.grid(row=0, column=1, padx=0, pady=2, sticky="w")
+    self.iv_channel_ch2.grid(row=6, column=1, padx=(60, 0), pady=(0, 5), sticky="w")
 
     self.start_button = ctk.CTkButton(self.optionsIV, text="Start", command=self.start_iv)
-    self.start_button.grid(row=8, column=0, padx=20, pady=(10,20), columnspan=2, sticky="s")
+    self.start_button.grid(row=7, column=0, padx=20, pady=(15, 20), columnspan=2, sticky="s")
 
     self.plotIV = ctk.CTkFrame(self.tabview.tab("IV Curves"))
     self.plotIV.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
