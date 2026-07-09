@@ -56,7 +56,6 @@ from acquisition.arbgen_acquisition import (
     set_arbgen_output,
     set_arbgen_pulse_width,
 )
-from gui.instructions import build_instructions_icon as _build_instructions_icon
 from acquisition.arbgen_dialects import (
     ArbgenDialect,
     wave_labels_for,
@@ -299,19 +298,8 @@ def setting_arbgen(self) -> None:
         font=("", 12, "bold"), text_color="#2ea043", anchor="w",
     )
     self.arbgen_connected_label.grid(
-        row=0, column=0, padx=14, pady=(10, 4), sticky="w",
+        row=0, column=0, columnspan=2, padx=14, pady=(10, 4), sticky="w",
     )
-
-    # Instructions icon. The instructions window resolver reads
-    # ``self.arbgen_dialect.key`` to pick the right recipe
-    # (Siglent vs Agilent) from ``instructions.json``.
-    self.instructionsArb_button = _build_instructions_icon(
-        tab, "ArbGen",
-    )
-    self.instructionsArb_button.grid(
-        row=0, column=1, padx=(0, 14), pady=(10, 4), sticky="e",
-    )
-    self._arbgen_active_label = lambda: self.arbgen_dialect.key
 
     self.arbgen_dialect: ArbgenDialect = DEFAULT_DIALECT
 

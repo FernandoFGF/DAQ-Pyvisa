@@ -65,30 +65,5 @@ Mueve el marcador con el mando giratorio para recorrer la función matemática"
     "rta": ["none"],
     "rto": ["none"],
     "keysight": ["none"]
-  },
-  "arbgen": {
-    "siglent": [
-      "ArbGen - Siglent SDG2122X",
-      "1. Connect the AWG in the Connect tab (the program auto-detects Siglent by *IDN?).",
-      "2. Pick the wave type from the dropdown (Sine / Square / Triangle / Pulse train).",
-      "3. Set Frequency, Amplitude (Vpp), Offset, Phase, and (for pulse) Pulse width.",
-      "4. Pick HiZ or 50 Ohm on the impedance slide switch (sent immediately).",
-      "5. Press Update to apply the parameters.",
-      "6. Slide Output to ON to enable the channel output.",
-      "Note: Pulse width is hidden outside Pulse-train mode; Phase is hidden in Pulse-train mode."
-    ],
-    "agilent": [
-      "ArbGen - Agilent / Keysight 33612A",
-      "1. Connect the AWG in the Connect tab. *IDN? responses starting with 'Agilent Technologies' or 'Keysight Technologies' select this dialect automatically.",
-      "2. Pick the wave type from the dropdown (Sine / Square / Pulse train / Noise / DC / Arb).",
-      "3. Set Frequency (SOUR1:FREQ), Amplitude in Vpp (SOUR1:VOLT), Offset (SOUR1:VOLT:OFFS), Phase (SOUR1:PHAS).",
-      "4. Pick HiZ (INF) or 50 Ohm (50) on the impedance slide switch - sent immediately.",
-      "5. Press Update to apply the parameters. Each parameter is sent as a separate SOUR1:KEY VALUE write.",
-      "6. Slide Output to ON to enable OUTP1.",
-      "Notes:",
-      "  - SOUR1 is used for CH1; SOUR2 for CH2. OUTP1 / OUTP2 are used for the output switch.",
-      "  - The 33600A does not have a Triangle wave type; the dropdown omits it.",
-      "  - Pulse width (SOUR1:FUNC:PULS:WIDT) is hidden outside Pulse-train mode; Phase is hidden in Pulse-train mode."
-    ]
   }
 }

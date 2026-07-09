@@ -18,27 +18,21 @@ from typing import List
 
 
 # Map the tab name shown on the GUI ("Spectrum", "IV Curves",
-# "Waveform", "ArbGen") to the JSON key in instructions.json.
+# "Waveform") to the JSON key in instructions.json. Only the
+# tabs that have an instructions button get an entry; the
+# others fall through to "none".
 _FUNCTION_MAP = {
     "Spectrum": "spectrum",
     "Waveform": "waveform",
     "IV Curves": "iv",
-    "ArbGen": "arbgen",
 }
 
 # Map the friendly scope name (as shown on the Connect card and
-# the scope label on each tab) to the JSON key. AWG scopes
-# resolve by their dialect key (siglent / agilent) because the
-# friendly name shown on the card is "ArbGen" but the JSON
-# stores dialect-specific recipes.
+# the scope label on each tab) to the JSON key.
 _SCOPE_MAP = {
     "RTA": "rta",
     "RTO": "rto",
     "KEY": "keysight",
-    "Siglent SDG2122X": "siglent",
-    "Keysight / Agilent 33612A": "agilent",
-    "siglent": "siglent",
-    "agilent": "agilent",
 }
 
 
@@ -135,26 +129,14 @@ def _open_instructions_window(function: str, app) -> None:
 
     scope = "(no scope connected)"
     if app is not None:
-        # The arbgen tab does not have a "get_active_scope" — it
-        # has an AWG instead. The tab-specific function picks the
-        # right label (dialect key, e.g. "siglent" / "agilent",
-        # or the friendly model name). When no tab-specific
-        # function is set, fall back to the oscilloscope.
-        resolver = getattr(app, "_arbgen_active_label", None)
-        if function == "ArbGen" and callable(resolver):
+        active = getattr(app, "get_active_scope", None)
+        if active is not None:
             try:
-                scope = resolver()
+                info = active()
             except Exception:
-                scope = "(no scope connected)"
-        else:
-            active = getattr(app, "get_active_scope", None)
-            if active is not None:
-                try:
-                    info = active()
-                except Exception:
-                    info = None
-                if info is not None:
-                    scope = info[2]
+                info = None
+            if info is not None:
+                scope = info[2]
 
     lines = load_instructions(function, scope)
 
