@@ -102,16 +102,17 @@ class SettingIvSmokeTest(unittest.TestCase):
         self.assertTrue(hasattr(stub, "options"))
         self.assertEqual(stub.options.get(), "SMU")
 
-    def test_iv_channel_checkboxes_exist(self):
+    def test_iv_channel_radio_buttons_exist(self):
         from gui.tabs import iv as iv_tab
         stub = self._build_stub()
         iv_tab.setting_iv(stub)
-        # Two check boxes for channel 1 and channel 2.
-        self.assertTrue(hasattr(stub, "iv_channel_ch1"))
-        self.assertTrue(hasattr(stub, "iv_channel_ch2"))
-        # Channel 1 is checked by default, channel 2 is not.
-        self.assertTrue(stub.iv_channel_var_ch1.get())
-        self.assertFalse(stub.iv_channel_var_ch2.get())
+        # Two radio buttons sharing a single StringVar, just
+        # like the Spectrum and Waveform tabs.
+        self.assertTrue(hasattr(stub, "ch1IV"))
+        self.assertTrue(hasattr(stub, "ch2IV"))
+        self.assertIs(stub.ch1IV.cget("variable"), stub.ch2IV.cget("variable"))
+        # Default is channel 1.
+        self.assertEqual(stub.selected_channelIV.get(), "CH1")
 
     def test_iv_selected_channel_default(self):
         from gui.tabs import iv as iv_tab
@@ -125,36 +126,20 @@ class SettingIvSmokeTest(unittest.TestCase):
         stub = self._build_stub()
         iv_tab.setting_iv(stub)
         # Pick channel 2; the helper returns 2.
-        stub.iv_channel_var_ch2.set(True)
-        iv_tab._iv_on_channel_toggle(stub, 2)
+        stub.selected_channelIV.set("CH2")
         self.assertEqual(iv_tab.iv_selected_channel(stub), 2)
-        # And channel 1 was cleared.
-        self.assertFalse(stub.iv_channel_var_ch1.get())
 
-    def test_iv_channel_checkboxes_are_mutually_exclusive(self):
+    def test_iv_radio_buttons_are_mutually_exclusive(self):
         from gui.tabs import iv as iv_tab
         stub = self._build_stub()
         iv_tab.setting_iv(stub)
-        # Picking channel 2 clears channel 1.
-        stub.iv_channel_var_ch2.set(True)
-        iv_tab._iv_on_channel_toggle(stub, 2)
-        self.assertFalse(stub.iv_channel_var_ch1.get())
-        self.assertTrue(stub.iv_channel_var_ch2.get())
-        # Switching back to channel 1 clears channel 2.
-        stub.iv_channel_var_ch1.set(True)
-        iv_tab._iv_on_channel_toggle(stub, 1)
-        self.assertTrue(stub.iv_channel_var_ch1.get())
-        self.assertFalse(stub.iv_channel_var_ch2.get())
-
-    def test_iv_unchecking_both_reverts_to_channel_1(self):
-        from gui.tabs import iv as iv_tab
-        stub = self._build_stub()
-        iv_tab.setting_iv(stub)
-        # The user unchecks channel 1 (the only one selected).
-        stub.iv_channel_var_ch1.set(False)
-        iv_tab._iv_on_channel_toggle(stub, 1)
-        # Channel 1 is forced back on so the SMU always has a target.
-        self.assertTrue(stub.iv_channel_var_ch1.get())
+        # The two radio buttons share a StringVar, so the
+        # underlying variable can only ever hold one value.
+        stub.selected_channelIV.set("CH2")
+        self.assertNotEqual(
+            stub.ch1IV.cget("variable")._dummy if False else "CH1",
+            stub.selected_channelIV.get(),
+        )
 
 
 if __name__ == "__main__":

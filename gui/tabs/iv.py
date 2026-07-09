@@ -109,41 +109,32 @@ def iv_update_connected(self) -> None:
 
 
 def _iv_on_channel_toggle(self, channel: int) -> None:
-    """Make the channel check boxes mutually exclusive.
+    """No-op kept for back-compat with the old check-box API.
 
-    Picking a channel clears the other one so the SMU is
-    always driven on exactly one channel. The Keithley 2470
-    commands (``(@1)`` / ``(@2)``) follow the SMU channel
-    numbering; we surface that in the GUI as well.
+    The radio buttons share a single StringVar, so the
+    selection is automatically mutually exclusive and we
+    never need to clear the other option. The argument is
+    ignored; the helper is referenced from the old test
+    suite and from any external code that may have wired
+    the legacy check-box command callback.
     """
-    var_ch1 = getattr(self, "iv_channel_var_ch1", None)
-    var_ch2 = getattr(self, "iv_channel_var_ch2", None)
-    if var_ch1 is None or var_ch2 is None:
-        return
-    if channel == 1 and var_ch1.get():
-        var_ch2.set(False)
-    elif channel == 2 and var_ch2.get():
-        var_ch1.set(False)
-    else:
-        # The user unchecked the only selected channel. Force
-        # channel 1 back on so the SMU always has a target.
-        if not var_ch1.get() and not var_ch2.get():
-            var_ch1.set(True)
+    return None
 
 
 def iv_selected_channel(self) -> int:
     """Return the SMU channel the user selected (1 or 2).
 
-    Defaults to 1 when the check boxes are in an unexpected
-    state. The value is passed to the adapter as
-    ``channel=...`` and substituted into the ``(@N)`` token
-    of the :FETCh:ARR:CURR? and :init queries.
+    Reads the radio-button StringVar. Defaults to 1 when
+    the radio group has not been built yet (older App
+    instances that predate the radio refactor) or when
+    the value is unexpected. The returned integer is passed
+    to the adapter as ``channel=...`` and substituted into
+    the ``(@N)`` token of the :init and :FETCh commands.
     """
-    var_ch1 = getattr(self, "iv_channel_var_ch1", None)
-    var_ch2 = getattr(self, "iv_channel_var_ch2", None)
-    if var_ch1 is None or var_ch2 is None:
+    var = getattr(self, "selected_channelIV", None)
+    if var is None:
         return 1
-    return 2 if var_ch2.get() else 1
+    return 2 if var.get() == "CH2" else 1
 
 
 def setting_iv(self):
@@ -187,23 +178,27 @@ def setting_iv(self):
     self.options.grid_remove()
 
     # Channel selector. The Keithley 2470 has two channels; we
-    # let the user pick which one to drive with a pair of
-    # mutually-exclusive check boxes. They sit on their own
-    # row directly under the SMU label so the layout reads
-    # top-to-bottom: connected instrument, which channel,
-    # voltage parameters, Start.
-    self.iv_channel_var_ch1 = ctk.BooleanVar(value=True)
-    self.iv_channel_var_ch2 = ctk.BooleanVar(value=False)
-    self.iv_channel_ch1 = ctk.CTkCheckBox(
-        self.optionsIV, text="CH1", variable=self.iv_channel_var_ch1,
-        command=lambda: _iv_on_channel_toggle(self, 1),
+    # let the user pick which one to drive. Mirrors the layout
+    # used by the Spectrum / Waveform tabs: a row of
+    # CTkRadioButton widgets sharing a single StringVar, hosted
+    # in a two-column frame so the two options are centred on
+    # the same row.
+    self.selected_channelIV = ctk.StringVar(value="CH1")
+    self.channels_frame_iv = ctk.CTkFrame(self.optionsIV, fg_color="transparent")
+    self.channels_frame_iv.grid(
+        row=1, column=0, padx=20, pady=(8, 4), columnspan=2, sticky="ew",
     )
-    self.iv_channel_ch1.grid(row=1, column=0, padx=(20, 8), pady=(8, 4), sticky="w")
-    self.iv_channel_ch2 = ctk.CTkCheckBox(
-        self.optionsIV, text="CH2", variable=self.iv_channel_var_ch2,
-        command=lambda: _iv_on_channel_toggle(self, 2),
+    self.channels_frame_iv.grid_columnconfigure((0, 1), weight=1)
+    self.ch1IV = ctk.CTkRadioButton(
+        self.channels_frame_iv, text="CH1",
+        variable=self.selected_channelIV, value="CH1",
     )
-    self.iv_channel_ch2.grid(row=1, column=0, padx=(80, 0), pady=(8, 4), sticky="w")
+    self.ch1IV.grid(row=0, column=0, padx=6, pady=4)
+    self.ch2IV = ctk.CTkRadioButton(
+        self.channels_frame_iv, text="CH2",
+        variable=self.selected_channelIV, value="CH2",
+    )
+    self.ch2IV.grid(row=0, column=1, padx=6, pady=4)
 
     self.iv_start = ctk.CTkLabel(self.optionsIV, text="Set voltage start:", anchor="w")
     self.iv_start.grid(row=2, column=0, padx=20, pady=(10, 0))
