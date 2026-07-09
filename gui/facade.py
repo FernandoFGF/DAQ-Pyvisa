@@ -275,15 +275,53 @@ class DAQGUIFunctions:
         from analysis.iv_analysis import calculate_vbr
         return calculate_vbr(v_values, i_values)
 
-    def qr_for(self, v_values, i_values) -> dict:
+    def qr_for(self, v_values, i_values, v_range=None) -> dict:
+        """Compute the quenching resistance.
+
+        ``v_range`` is an optional ``(v_min, v_max)`` tuple that
+        restricts the fit to a user-selected segment of the
+        positive section. When ``None`` the legacy default
+        (everything above 0.75 V) is used.
+        """
         from analysis.iv_analysis import calculate_qr
-        return calculate_qr(v_values, i_values)
+        return calculate_qr(v_values, i_values, v_range=v_range)
 
     def plot_iv(self, ax, v_values, i_values, vbr_point=None, qr_line=None,
                 dydx_over_y=None, v_for_ratio=None) -> None:
         from analysis.iv_analysis import plot_iv
         plot_iv(ax, v_values, i_values, vbr_point=vbr_point, qr_line=qr_line,
                 dydx_over_y=dydx_over_y, v_for_ratio=v_for_ratio)
+
+    def plot_vbr(self, ax, v_filtered, i_filtered, vbr_point,
+                 dydx_over_y, v_for_ratio) -> None:
+        """Draw the Vbr analysis: negative IV section plus the
+        (dI/dV)/I derivative on a secondary y-axis. The Vbr
+        point is marked with a red dot on both the IV curve
+        and the derivative minimum."""
+        from analysis.iv_analysis import plot_vbr
+        plot_vbr(ax, v_filtered, i_filtered, vbr_point,
+                 dydx_over_y, v_for_ratio)
+
+    def plot_qr_initial(self, ax, v_positive, i_positive) -> None:
+        """Draw the positive IV section with two pickable red
+        markers at the curve endpoints. The GUI installs a
+        PickEvent handler on those markers so the user can
+        drag them along the curve and re-fit by pressing the
+        Qr button again."""
+        from analysis.iv_analysis import plot_qr_initial
+        plot_qr_initial(ax, v_positive, i_positive)
+
+    def plot_qr_with_fit(self, ax, v_positive, i_positive,
+                         v_fit, i_fit) -> None:
+        """Draw the positive IV section with the final QR fit
+        line and its two endpoints highlighted in red."""
+        from analysis.iv_analysis import plot_qr_with_fit
+        plot_qr_with_fit(ax, v_positive, i_positive, v_fit, i_fit)
+
+    def plot_complete(self, ax, v_values, i_values) -> None:
+        """Draw the full IV curve (positive + negative sections)."""
+        from analysis.iv_analysis import plot_complete
+        plot_complete(ax, v_values, i_values)
 
     def find_histogram_peaks(self, data, bins: int = 50, prominence: float = 80) -> dict:
         from analysis.spectrum_analysis import find_histogram_peaks as _fhp

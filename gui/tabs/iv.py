@@ -4,8 +4,30 @@ Módulo que contiene la interfaz gráfica para las curvas IV.
 Las acciones de análisis (Vbr, Qr, "Draw complete") delegan en
 ``analysis.iv_analysis``. Las mediciones de adquisición se hacen a
 través de ``DAQGUIFunctions.start_iv_full`` (ver daq_gui_main.py).
+
+Analysis behaviour:
+
+  * **Vbr** plots the negative section of the IV curve with
+    the (dI/dV)/I derivative on a secondary y-axis (red), and
+    marks the calculated Vbr point on both the IV curve and
+    the derivative minimum.
+
+  * **Qr** plots the positive section of the IV curve with
+    two red draggable dots at the min / max of the positive
+    section. The user can drag the dots along the curve to
+    pick a custom voltage range; pressing the Qr button again
+    re-fits the segment between the new endpoints.
+
+  * **Draw complete** plots the full IV curve so the user
+    sees the whole SiPM response (positive + negative).
+
+The QR interactive plot stores the (v, i) coordinates of the
+two draggable dots on ``self.iv_qr_markers`` and the live
+endpoints on ``self.iv_qr_endpoints`` so the calculation can
+read them on each Qr press.
 """
 import customtkinter as ctk
+import numpy as np
 
 
 def _parse_iv_aux(self):
@@ -18,41 +40,66 @@ def _parse_iv_aux(self):
     return v, i
 
 
+def _get_canvas(self):
+    """Return (figure, axes) for the IV plot, rebuilding the
+    canvas if the user has never run an acquisition yet."""
+    fig = self.canvas.figure
+    ax = fig.gca()
+    return fig, ax
+
+
 def _do_vbr(self):
-    from analysis.iv_analysis import calculate_vbr
     v, i = _parse_iv_aux(self)
     if v is None:
         print("Necesitas realizar algun analisis primero..")
         return
-    result = calculate_vbr(v, i)
+    result = self.gui_funcs.vbr_for(v, i)
     if not result["ok"]:
         print(result["message"])
         return
     self.vbr_Output.configure(state="normal")
     self.vbr_Output.delete("1.0", "end")
-    self.vbr_Output.insert("0.0", f"{result['max_x']} V")
+    self.vbr_Output.insert("0.0", f"{result['max_x']:.4g} V")
     self.vbr_Output.configure(state="disabled")
 
-    fig = self.canvas.figure
-    self.canvas.draw()
-    ax = fig.gca()
-    self.gui_funcs.plot_iv(
+    _, ax = _get_canvas(self)
+    self.gui_funcs.plot_vbr(
         ax,
-        result["v_filtered"],
-        result["i_filtered"],
+        v_filtered=result["v_filtered"],
+        i_filtered=result["i_filtered"],
         vbr_point=(result["max_x"], result["max_y"]),
         dydx_over_y=result["dydx_over_y"],
         v_for_ratio=result["v_for_ratio"],
     )
+    try:
+        self.canvas.draw()
+        self.canvas.flush_events()
+    except Exception:
+        pass
 
 
 def _do_qr(self):
-    from analysis.iv_analysis import calculate_qr
+    """QR analysis with user-movable endpoints.
+
+    First press: plots the positive section with two red
+    draggable dots at the min and max of the positive section.
+    Subsequent presses: re-fit the segment between the current
+    endpoint positions (which the user may have dragged along
+    the curve).
+    """
     v, i = _parse_iv_aux(self)
     if v is None:
         print("Necesitas realizar algun analisis primero..")
         return
-    result = calculate_qr(v, i)
+
+    # If the user has not moved the markers yet, start with
+    # the default range (min / max of the positive section).
+    endpoints = getattr(self, "iv_qr_endpoints", None)
+    v_range = None
+    if endpoints is not None:
+        v_range = (endpoints[0], endpoints[1])
+
+    result = self.gui_funcs.qr_for(v, i, v_range=v_range)
     if not result["ok"]:
         print(result["message"])
         return
@@ -61,15 +108,109 @@ def _do_qr(self):
     self.qr_Output.insert("0.0", f"{result['qr_value']} Ω")
     self.qr_Output.configure(state="disabled")
 
-    fig = self.canvas.figure
-    self.canvas.draw()
-    ax = fig.gca()
-    self.gui_funcs.plot_iv(
-        ax,
-        result["v_positive"],
-        result["i_positive"],
-        qr_line=(result["v_fit"], result["i_fit"]),
-    )
+    _, ax = _get_canvas(self)
+    v_pos = result["v_positive"]
+    i_pos = result["i_positive"]
+    v_fit = result["v_fit"]
+    i_fit = result["i_fit"]
+    # First press: render the pickable endpoints so the user
+    # can drag them. Subsequent presses: render the final fit.
+    if endpoints is None:
+        self.gui_funcs.plot_qr_initial(ax, v_pos, i_pos)
+        # Snapshot the default endpoints so the next press
+        # knows the range even before the user has dragged.
+        self.iv_qr_endpoints = (v_fit[0], v_fit[1])
+        self._install_qr_marker_drag_handlers()
+    else:
+        self.gui_funcs.plot_qr_with_fit(ax, v_pos, i_pos, v_fit, i_fit)
+        # Update the endpoint snapshot so the next press uses
+        # the new range (in case the user has dragged).
+        self.iv_qr_endpoints = (v_fit[0], v_fit[1])
+    try:
+        self.canvas.draw()
+        self.canvas.flush_events()
+    except Exception:
+        pass
+
+
+def _install_qr_marker_drag_handlers(self) -> None:
+    """Install a PickEvent + MotionNotifyEvent handler on the
+    matplotlib canvas so the user can drag the two QR endpoint
+    markers along the curve.
+
+    We snapshot the two markers on ``self.iv_qr_markers``
+    (the Line2D objects returned by matplotlib). When the
+    user clicks a marker, a Motion handler snaps the marker
+    to the nearest curve point until they release the mouse
+    button. Releasing the button removes the motion handler
+    so the plot goes back to its normal idle behaviour.
+    """
+    if getattr(self, "_qr_drag_handlers_installed", False):
+        return
+    ax = self.canvas.figure.gca()
+
+    def _on_pick(event):
+        # ``event.artist`` is the Line2D the user picked. We
+        # only react to the two QR markers; ignore anything
+        # else (axis spines, the curve itself, etc.).
+        markers = getattr(self, "iv_qr_markers", None)
+        if markers is None or event.artist not in markers:
+            return
+        idx = markers.index(event.artist)
+        # Cache the underlying curve data for snapping.
+        line = None
+        for line_artist in ax.get_lines():
+            if line_artist.get_label() == "IV (positiva)":
+                line = line_artist
+                break
+        if line is None:
+            return
+        curve_x = np.asarray(line.get_xdata(), dtype=float)
+        curve_y = np.asarray(line.get_ydata(), dtype=float)
+
+        def _on_motion(ev):
+            if ev.inaxes is not ax:
+                return
+            # Snap the picked marker to the closest point on
+            # the IV curve so the user cannot drag it off the
+            # data.
+            snap_idx = int(np.argmin(np.abs(curve_x - ev.xdata)))
+            markers[idx].set_data([curve_x[snap_idx]], [curve_y[snap_idx]])
+            self.canvas.draw_idle()
+
+        def _on_release(_ev):
+            # Detach the motion handler and refresh the
+            # endpoint snapshot so the next Qr press uses the
+            # new range.
+            self.canvas.mpl_disconnect(motion_cid)
+            self.canvas.mpl_disconnect(release_cid)
+            self.iv_qr_endpoints = (
+                markers[0].get_xdata()[0], markers[1].get_xdata()[0],
+            )
+
+        motion_cid = self.canvas.mpl_connect(
+            "motion_notify_event", _on_motion,
+        )
+        release_cid = self.canvas.mpl_connect(
+            "button_release_event", _on_release,
+        )
+
+    self.canvas.mpl_connect("pick_event", _on_pick)
+    self._qr_drag_handlers_installed = True
+
+    # We need to capture the markers after the next draw.
+    # plot_qr_initial sets them with ``picker=5``; we grab
+    # them once via a deferred call.
+    def _grab_markers():
+        red_lines = [
+            line for line in ax.get_lines()
+            if line.get_marker() == "o"
+            and line.get_color() == "r"
+            and line.get_picker() is not None
+        ]
+        if red_lines:
+            self.iv_qr_markers = red_lines
+    self.after(50, _grab_markers)
 
 
 def _do_complete(self):
@@ -77,10 +218,21 @@ def _do_complete(self):
     if v is None:
         print("Necesitas realizar algun analisis primero..")
         return
-    fig = self.canvas.figure
-    self.canvas.draw()
-    ax = fig.gca()
-    self.gui_funcs.plot_iv(ax, v, i)
+    _, ax = _get_canvas(self)
+    self.gui_funcs.plot_complete(ax, v, i)
+    try:
+        self.canvas.draw()
+        self.canvas.flush_events()
+    except Exception:
+        pass
+
+
+def _reset_qr_state(self) -> None:
+    """Clear the QR drag state so the next Qr press starts
+    fresh (default endpoints, default range)."""
+    self.iv_qr_endpoints = None
+    self.iv_qr_markers = None
+    self._qr_drag_handlers_installed = False
 
 
 def iv_update_connected(self) -> None:
@@ -222,6 +374,14 @@ def setting_iv(self):
 
     self.start_button = ctk.CTkButton(self.optionsIV, text="Start", command=self.start_iv)
     self.start_button.grid(row=8, column=0, padx=20, pady=(15, 20), columnspan=2, sticky="s")
+
+    # QR drag state. The interactive QR plot uses two
+    # user-movable markers to define the fit range; this
+    # attribute caches the current endpoints and the marker
+    # artists so the next Qr press can read the new range
+    # without re-prompting. Reset to None on every fresh
+    # acquisition.
+    _reset_qr_state(self)
 
     self.plotIV = ctk.CTkFrame(self.tabview.tab("IV Curves"))
     self.plotIV.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")

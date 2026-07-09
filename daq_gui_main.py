@@ -516,6 +516,11 @@ try:
                 ax.set_ylabel('Amperios')
                 ax.plot(v, i)
                 fig.canvas.draw()
+                # A fresh IV curve invalidates any cached QR
+                # endpoint / marker state from a previous run.
+                if hasattr(self, "_reset_qr_state"):
+                    from gui.tabs.iv import _reset_qr_state
+                    _reset_qr_state(self)
                 print("IV curve finished")
 
             def _on_error(msg):

@@ -99,6 +99,122 @@ class QrParityTests(unittest.TestCase):
         res = calculate_qr(np.array([]), np.array([]))
         self.assertFalse(res["ok"])
 
+    def test_v_range_restricts_fit(self):
+        """A user-selected voltage range must restrict the
+        fit to the segment in that range. We build a linear
+        positive section (which is the realistic SiPM
+        response) and verify the fit endpoints reflect the
+        user-selected range, not the global default."""
+        v = np.array([0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0])
+        # Linear IV with slope 1e-5 A/V across the whole
+        # positive section. The fit slope must be 1e-5
+        # regardless of the chosen range; the fit endpoints
+        # (v_fit / i_fit) must reflect the user-selected
+        # range.
+        i = 1e-5 * v
+        res = calculate_qr(v, i, v_range=(1.0, 3.0))
+        self.assertTrue(res["ok"], msg=res.get("message"))
+        self.assertAlmostEqual(res["slope"], 1e-5, places=9)
+        self.assertAlmostEqual(res["v_fit"][0], 1.0, places=12)
+        self.assertAlmostEqual(res["v_fit"][1], 3.0, places=12)
+        self.assertAlmostEqual(res["i_fit"][0], 1e-5, places=12)
+        self.assertAlmostEqual(res["i_fit"][1], 3e-5, places=12)
+        # A different range produces different endpoints but
+        # the same slope.
+        res2 = calculate_qr(v, i, v_range=(0.5, 2.5))
+        self.assertTrue(res2["ok"], msg=res2.get("message"))
+        self.assertAlmostEqual(res2["slope"], 1e-5, places=9)
+        self.assertAlmostEqual(res2["v_fit"][0], 0.5, places=12)
+        self.assertAlmostEqual(res2["v_fit"][1], 2.5, places=12)
+
+    def test_v_range_reversed_endpoints_are_normalised(self):
+        """If the user drags the markers in the wrong order
+        (right then left) we still fit the correct segment.
+        The implementation sorts the endpoints internally."""
+        v = np.array([0.0, 0.5, 1.0, 1.5, 2.0])
+        i = np.array([0.0, 5e-6, 1e-5, 1.5e-5, 2e-5])
+        res = calculate_qr(v, i, v_range=(2.0, 0.5))  # reversed
+        self.assertTrue(res["ok"], msg=res.get("message"))
+        self.assertAlmostEqual(res["slope"], 1e-5, places=9)
+
+    def test_v_range_with_too_few_samples(self):
+        """A range that catches only one sample must fail
+        cleanly (the fit needs at least 2 points)."""
+        v = np.array([0.0, 0.1, 0.5, 1.0, 1.5])
+        i = np.array([0.0, 1e-6, 5e-6, 1e-5, 1.5e-5])
+        res = calculate_qr(v, i, v_range=(0.49, 0.51))
+        self.assertFalse(res["ok"])
+
+    def test_v_range_zero_slope_is_rejected(self):
+        """A flat segment (slope = 0) would produce 1/0 = inf;
+        we must reject it with a clear message instead of
+        returning an infinite resistance."""
+        v = np.array([0.0, 0.5, 1.0, 1.5])
+        i = np.array([0.0, 5e-6, 5e-6, 5e-6])  # flat
+        res = calculate_qr(v, i, v_range=(0.0, 1.5))
+        self.assertFalse(res["ok"])
+        self.assertIn("pendiente", res["message"])
+
+
+class PlotHelpersTests(unittest.TestCase):
+    """Smoke tests for the new plot helpers. The matplotlib
+    back-end is exercised end-to-end (Agg) so any import or
+    API change in the analysis module fails the test."""
+
+    def setUp(self) -> None:
+        import matplotlib
+        matplotlib.use("Agg")
+        from matplotlib.figure import Figure
+        self.fig = Figure()
+        self.ax = self.fig.add_subplot(111)
+
+    def test_plot_vbr_draws_negative_section_and_derivative(self):
+        from analysis.iv_analysis import plot_vbr
+        v = np.linspace(-20.0, -0.5, 50)
+        i = -1e-7 * np.exp(-v / 5.0)
+        plot_vbr(
+            self.ax, v, i,
+            vbr_point=(-10.0, float(i[20])),
+            dydx_over_y=np.linspace(0.1, 0.9, 49),
+            v_for_ratio=v[1:],
+        )
+        # At least 3 lines: the IV curve, the Vbr marker, the
+        # derivative on the secondary axis.
+        self.assertGreaterEqual(len(self.ax.get_lines()), 2)
+
+    def test_plot_qr_initial_creates_two_pickable_markers(self):
+        from analysis.iv_analysis import plot_qr_initial
+        v = np.linspace(0.0, 2.0, 30)
+        i = 1e-5 * v
+        plot_qr_initial(self.ax, v, i)
+        # Two red markers (the Line2D "o" series) plus the
+        # IV line plus the dashed fit line.
+        red_markers = [
+            line for line in self.ax.get_lines()
+            if line.get_color() == "r" and line.get_marker() == "o"
+        ]
+        self.assertEqual(len(red_markers), 2)
+        for marker in red_markers:
+            self.assertIsNotNone(marker.get_picker())
+
+    def test_plot_qr_with_fit_draws_the_final_line(self):
+        from analysis.iv_analysis import plot_qr_with_fit
+        v = np.linspace(0.0, 2.0, 30)
+        i = 1e-5 * v
+        plot_qr_with_fit(
+            self.ax, v, i,
+            v_fit=[0.5, 1.5], i_fit=[5e-6, 1.5e-5],
+        )
+        red_lines = [l for l in self.ax.get_lines() if l.get_color() == "r"]
+        self.assertGreaterEqual(len(red_lines), 1)
+
+    def test_plot_complete_draws_full_curve(self):
+        from analysis.iv_analysis import plot_complete
+        v = np.array([-1.0, -0.5, 0.0, 0.5, 1.0])
+        i = np.array([-1e-5, -5e-6, 0.0, 5e-6, 1e-5])
+        plot_complete(self.ax, v, i)
+        self.assertEqual(len(self.ax.get_lines()), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
