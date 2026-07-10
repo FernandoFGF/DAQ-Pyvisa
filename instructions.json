@@ -12,7 +12,7 @@
     ],
     "keysight": [
       "Configurar una measurement de Area.",
-      "Tener en cuenta que va a capturar toda la pantalla.",
+      "Para medir el area solo de una zona, crear una funcion de gating (desde Math o con el raton) y luego calcular el area sobre ese zoom.",
       "Se necesita RUN continuo."
     ]
   },
