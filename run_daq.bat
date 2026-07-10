@@ -45,7 +45,7 @@ if not exist "config.yaml" (
 )
 
 REM Run the application
-python run_daq.py
+python daq_gui_main.py
 
 REM Keep window open if there's an error
 if errorlevel 1 (
