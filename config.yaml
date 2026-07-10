@@ -17,7 +17,7 @@ instruments:
     timeout: null
   arbGen:
     name: Arbitrary Generator
-    address: TCPIP::192.168.0.34::INSTR
+    address: TCPIP::169.254.5.21::INSTR
     timeout: 20000
   powerSupply:
     name: Power Supply

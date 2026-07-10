@@ -77,6 +77,22 @@ DEFAULT_CONNECTED_LABEL = DEFAULT_DIALECT.label
 _PULSE_LABEL_SIGLENT = "Pulse train"
 _PULSE_LABELS = {"Pulse train", "Pulse"}
 
+_ENG_SUFFIXES = {
+    "n": "e-9", "u": "e-6", "µ": "e-6",
+    "m": "e-3", "k": "e3", "K": "e3",
+    "M": "e6", "G": "e9",
+}
+
+
+def _parse_eng(value: str) -> str:
+    s = value.strip()
+    if not s:
+        return s
+    last = s[-1]
+    if last in _ENG_SUFFIXES:
+        return s[:-1] + _ENG_SUFFIXES[last]
+    return s
+
 
 def _is_pulse_label(dialect: ArbgenDialect, label: str) -> bool:
     """Return True if ``label`` selects the pulse-train wave type.
@@ -291,6 +307,7 @@ def setting_arbgen(self) -> None:
     tab.grid_columnconfigure(1, weight=1)
     tab.grid_rowconfigure(0, weight=0)  # connected indicator
     tab.grid_rowconfigure(1, weight=1)  # channel panels
+    tab.grid_rowconfigure(2, weight=0)  # memory bar
 
     # Connected instrument indicator (top, spans both columns).
     self.arbgen_connected_label = ctk.CTkLabel(
@@ -306,6 +323,8 @@ def setting_arbgen(self) -> None:
     # Two scrollable channel panels, side by side, below the indicator.
     self.arbgen_panels: dict[str, dict] = {}
     _populate_panels(self, tab, self.arbgen_dialect)
+    for col, ch in enumerate(("CH1", "CH2")):
+        _build_channel_memory_bar(self, tab, ch, col)
 
 
 def _populate_panels(self, tab, dialect: ArbgenDialect) -> None:
@@ -352,6 +371,67 @@ def _populate_panels(self, tab, dialect: ArbgenDialect) -> None:
         self.arbgen_panels[channel] = widgets
 
 
+def _build_channel_memory_bar(self, tab, channel: str, col: int) -> None:
+    bar = ctk.CTkFrame(tab)
+    bar.grid(row=2, column=col, padx=8, pady=(0, 8), sticky="ew")
+    bar.grid_columnconfigure(6, weight=1)
+
+    if not hasattr(self, "arbgen_selected_memory"):
+        self.arbgen_selected_memory: dict[str, str | None] = {}
+        self.arbgen_memory_slots: dict[str, dict[str, dict]] = {}
+        self.arbgen_memory_buttons: dict[str, dict[str, ctk.CTkButton]] = {}
+        self.arbgen_memory_defaults: dict[str, dict[str, dict]] = {}
+
+    self.arbgen_selected_memory[channel] = None
+    self.arbgen_memory_slots[channel] = {}
+    self.arbgen_memory_buttons[channel] = {}
+    self.arbgen_memory_defaults[channel] = {}
+
+    btns = self.arbgen_memory_buttons[channel]
+    defaults = self.arbgen_memory_defaults[channel]
+
+    def _select_m(slot):
+        btns[slot].configure(
+            fg_color="#2b5a8a", border_width=2, border_color="#6bb5ff",
+        )
+
+    def _m_click(slot):
+        cur = self.arbgen_selected_memory[channel]
+        if cur == slot:
+            _deselect_memory_slot(self, channel, slot)
+            self.arbgen_selected_memory[channel] = None
+        else:
+            if cur:
+                _deselect_memory_slot(self, channel, cur)
+            self.arbgen_selected_memory[channel] = slot
+            _select_m(slot)
+
+    for i, name in enumerate(("M1", "M2", "M3", "M4")):
+        btn = ctk.CTkButton(bar, text=name, width=50, height=28,
+                            command=lambda s=name: _m_click(s))
+        btn.grid(row=0, column=i, padx=4, pady=6)
+        btns[name] = btn
+        defaults[name] = {
+            "fg_color": btn.cget("fg_color"),
+            "border_width": btn.cget("border_width"),
+            "border_color": btn.cget("border_color"),
+        }
+
+    save_btn = ctk.CTkButton(
+        bar, text="Save", width=70, height=28,
+        fg_color="#3b8ed0", hover_color="#36719f",
+        command=lambda: _arbgen_save(self, channel),
+    )
+    save_btn.grid(row=0, column=4, padx=4, pady=6)
+
+    load_btn = ctk.CTkButton(
+        bar, text="Load", width=70, height=28,
+        fg_color="#2ea043", hover_color="#1e7a32",
+        command=lambda: _arbgen_load(self, channel),
+    )
+    load_btn.grid(row=0, column=5, padx=4, pady=6)
+
+
 def arbgen_update_connected(self) -> None:
     """Re-detect the AWG model and rebuild the panel if the dialect changed.
 
@@ -395,6 +475,71 @@ def arbgen_update_connected(self) -> None:
 # work to ``acquisition.arbgen_acquisition``.
 
 
+def _deselect_memory_slot(self, channel: str, slot: str) -> None:
+    defaults = self.arbgen_memory_defaults[channel][slot]
+    btn = self.arbgen_memory_buttons[channel][slot]
+    btn.configure(
+        fg_color=defaults["fg_color"],
+        border_width=defaults["border_width"],
+        border_color=defaults["border_color"],
+    )
+
+
+def _arbgen_save(self, channel: str) -> None:
+    slot = self.arbgen_selected_memory.get(channel)
+    if slot is None:
+        print(f"[Memory CH{channel}] No slot selected; nothing to save.")
+        return
+    panel = self.arbgen_panels.get(channel)
+    if panel is None:
+        return
+    params = {
+        "waveform": panel["waveform"].get(),
+        "freq": panel["freq"].get(),
+        "amp": panel["amp"].get(),
+        "offset": panel["offset"].get(),
+        "phase": panel["phase"].get(),
+        "width": panel["width"].get(),
+        "impedance": panel["impedance"].get(),
+        "output": panel["output"].get(),
+    }
+    self.arbgen_memory_slots[channel][slot] = params
+    _deselect_memory_slot(self, channel, slot)
+    self.arbgen_selected_memory[channel] = None
+    print(f"[Memory CH{channel}] Saved {slot}")
+
+
+def _arbgen_load(self, channel: str) -> None:
+    slot = self.arbgen_selected_memory.get(channel)
+    if slot is None:
+        print(f"[Memory CH{channel}] No slot selected; nothing to load.")
+        return
+    params = self.arbgen_memory_slots[channel].get(slot)
+    if params is None:
+        print(f"[Memory CH{channel}] {slot} is empty; nothing to load.")
+        return
+    panel = self.arbgen_panels.get(channel)
+    if panel is None:
+        return
+    panel["waveform"].set(params["waveform"])
+    panel["freq"].delete(0, "end")
+    panel["freq"].insert(0, params["freq"])
+    panel["amp"].delete(0, "end")
+    panel["amp"].insert(0, params["amp"])
+    panel["offset"].delete(0, "end")
+    panel["offset"].insert(0, params["offset"])
+    panel["phase"].delete(0, "end")
+    panel["phase"].insert(0, params["phase"])
+    panel["width"].delete(0, "end")
+    panel["width"].insert(0, params["width"])
+    panel["impedance"].set(params["impedance"])
+    panel["output"].set(params["output"])
+    _refresh_pulse_visibility(self, channel)
+    _deselect_memory_slot(self, channel, slot)
+    self.arbgen_selected_memory[channel] = None
+    print(f"[Memory CH{channel}] Loaded {slot}")
+
+
 def _read_panel_params(self, channel: str) -> dict:
     """Build the params dict for a channel from the live widgets."""
     panel = self.arbgen_panels[channel]
@@ -403,12 +548,12 @@ def _read_panel_params(self, channel: str) -> dict:
         "channel": channel,
         "waveform_label": label,
         "waveform_scpi": wave_token_for(self.arbgen_dialect, label),
-        "frequency_hz": panel["freq"].get(),
-        "amplitude_vpp": panel["amp"].get(),
+        "frequency_hz": _parse_eng(panel["freq"].get()),
+        "amplitude_vpp": _parse_eng(panel["amp"].get()),
         "impedance": panel["impedance"].get(),
-        "offset_v": panel["offset"].get(),
-        "phase_deg": panel["phase"].get(),
-        "width_s": panel["width"].get(),
+        "offset_v": _parse_eng(panel["offset"].get()),
+        "phase_deg": _parse_eng(panel["phase"].get()),
+        "width_s": _parse_eng(panel["width"].get()),
     }
 
 
@@ -491,7 +636,7 @@ def arbgen_change_width(self, channel: str) -> None:
     """Pulse width change, fired on focus-out (so we do not
     spam the scope on every keystroke)."""
     panel = self.arbgen_panels[channel]
-    raw = panel["width"].get().strip() or "10E-6"
+    raw = _parse_eng(panel["width"].get().strip() or "10E-6")
     try:
         width = float(raw)
     except ValueError:
