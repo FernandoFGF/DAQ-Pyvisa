@@ -7,7 +7,7 @@
     ],
     "rto": [
       "Configurar una measurement de Area.",
-      "Tener en cuenta que va a capturar toda la pantalla.",
+      "Para establecer un area, dentro de measurement anadir una gate",
       "Se necesita RUN continuo."
     ],
     "keysight": [
