@@ -378,12 +378,11 @@ def _build_channel_memory_bar(self, tab, channel: str, col: int) -> None:
 
     if not hasattr(self, "arbgen_selected_memory"):
         self.arbgen_selected_memory: dict[str, str | None] = {}
-        self.arbgen_memory_slots: dict[str, dict[str, dict]] = {}
+        self.arbgen_memory_slots: dict[str, dict] = {}
         self.arbgen_memory_buttons: dict[str, dict[str, ctk.CTkButton]] = {}
         self.arbgen_memory_defaults: dict[str, dict[str, dict]] = {}
 
     self.arbgen_selected_memory[channel] = None
-    self.arbgen_memory_slots[channel] = {}
     self.arbgen_memory_buttons[channel] = {}
     self.arbgen_memory_defaults[channel] = {}
 
@@ -503,7 +502,7 @@ def _arbgen_save(self, channel: str) -> None:
         "impedance": panel["impedance"].get(),
         "output": panel["output"].get(),
     }
-    self.arbgen_memory_slots[channel][slot] = params
+    self.arbgen_memory_slots[slot] = params
     _deselect_memory_slot(self, channel, slot)
     self.arbgen_selected_memory[channel] = None
     print(f"[Memory CH{channel}] Saved {slot}")
@@ -514,7 +513,7 @@ def _arbgen_load(self, channel: str) -> None:
     if slot is None:
         print(f"[Memory CH{channel}] No slot selected; nothing to load.")
         return
-    params = self.arbgen_memory_slots[channel].get(slot)
+    params = self.arbgen_memory_slots.get(slot)
     if params is None:
         print(f"[Memory CH{channel}] {slot} is empty; nothing to load.")
         return
