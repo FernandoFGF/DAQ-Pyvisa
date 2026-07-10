@@ -20,6 +20,14 @@ import os
 from gui.instructions import build_instructions_icon as _build_instructions_icon
 
 
+def _format_hz(value: float) -> str:
+    prefixes = [(1e9, "G"), (1e6, "M"), (1e3, "k")]
+    for factor, prefix in prefixes:
+        if abs(value) >= factor:
+            return f"{value / factor:.2f} {prefix}Hz"
+    return f"{value:.2f} Hz"
+
+
 def _load_and_plot_waveform(self, file_index: int):
     path = str(self.path_wf.get())
     name = self.save_entry.get()
@@ -66,19 +74,19 @@ def _load_and_plot_waveform(self, file_index: int):
 
 def _do_dcr(self):
     path = str(self.path_wf.get())
-    name = self.save_entry.get()
+    name = getattr(self, "_last_wf_name", "") or self.save_entry.get()
     if not path or not name:
         self.dcr_output.configure(state="normal")
         self.dcr_output.delete("1.0", "end")
         self.dcr_output.insert("0.0", "N/A")
         self.dcr_output.configure(state="disabled")
         return
-    count, time_line = self.gui_funcs.count_waveform_files(path, name)
-    result = self.gui_funcs.calculate_dcr(count, time_line)
+    timestamps = self.gui_funcs.read_waveform_timestamps(path, name)
+    result = self.gui_funcs.calculate_dcr_from_timestamps(timestamps)
     self.dcr_output.configure(state="normal")
     self.dcr_output.delete("1.0", "end")
     if result["ok"]:
-        self.dcr_output.insert("0.0", f"{result['dcr_value']} Hz")
+        self.dcr_output.insert("0.0", _format_hz(result['dcr_value']))
     else:
         print("Error al calcular el dcr:", result["error"])
         self.dcr_output.insert("0.0", "Error")

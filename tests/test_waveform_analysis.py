@@ -12,28 +12,77 @@ import unittest
 import numpy as np
 
 from analysis.waveform_analysis import (
-    calculate_dcr,
+    calculate_dcr_from_timestamps,
     count_files,
     load_waveform_file,
     make_time_axis,
     plot_waveform,
+    read_timestamps,
 )
 
 
-class CalculateDcrTests(unittest.TestCase):
+class CalculateDcrFromTimestampsTests(unittest.TestCase):
     def test_basic(self):
-        # 100 files, time_str "-1.5" -> 100 / 1.5 = 66.666... -> 66.67
-        res = calculate_dcr(100, "-1.5")
+        # 4 files spaced 0.5 s apart -> mean diff = 0.5 -> DCR = 2 Hz
+        ts = [0.0, 0.5, 1.0, 1.5]
+        res = calculate_dcr_from_timestamps(ts)
         self.assertTrue(res["ok"])
-        self.assertAlmostEqual(res["dcr_value"], 66.67, places=2)
+        self.assertAlmostEqual(res["dcr_value"], 2.0)
 
-    def test_zero_division(self):
-        res = calculate_dcr(10, "0")
+    def test_uneven_spacing(self):
+        # 3 files at 0.0, 1.0, 3.0 -> diffs = [1.0, 2.0] -> mean = 1.5 -> 0.67 Hz
+        ts = [0.0, 1.0, 3.0]
+        res = calculate_dcr_from_timestamps(ts)
+        self.assertTrue(res["ok"])
+        self.assertAlmostEqual(res["dcr_value"], 0.67, places=2)
+
+    def test_single_timestamp(self):
+        res = calculate_dcr_from_timestamps([1.0])
         self.assertFalse(res["ok"])
 
-    def test_bad_time_string(self):
-        res = calculate_dcr(10, "not_a_number")
+    def test_empty_list(self):
+        res = calculate_dcr_from_timestamps([])
         self.assertFalse(res["ok"])
+
+    def test_negative_timestamps(self):
+        # TSR values from the scope are negative (time before reference)
+        ts = [-3.0, -2.0, -1.0]
+        res = calculate_dcr_from_timestamps(ts)
+        self.assertTrue(res["ok"])
+        self.assertAlmostEqual(res["dcr_value"], 1.0)
+
+
+class ReadTimestampsTests(unittest.TestCase):
+    def test_reads_all_prefixed_files(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            for i, t in enumerate([-3.0, -2.0, -1.0]):
+                with open(os.path.join(tmp, f"run_{i}.txt"), "w", encoding="utf-8") as f:
+                    f.write(f"{t}\nwavedata\n0.1\n")
+            ts = read_timestamps(tmp, "run")
+            self.assertEqual(ts, [-3.0, -2.0, -1.0])
+
+    def test_ignores_non_prefixed_files(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "run_0.txt"), "w", encoding="utf-8") as f:
+                f.write("-1.0\n")
+            with open(os.path.join(tmp, "other.txt"), "w", encoding="utf-8") as f:
+                f.write("99.0\n")
+            ts = read_timestamps(tmp, "run")
+            self.assertEqual(ts, [-1.0])
+
+    def test_missing_directory(self):
+        ts = read_timestamps("/nonexistent/path", "run")
+        self.assertEqual(ts, [])
+
+    def test_bad_timestamp_line(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "run_0.txt"), "w", encoding="utf-8") as f:
+                f.write("not_a_number\n")
+            ts = read_timestamps(tmp, "run")
+            self.assertEqual(ts, [])
 
 
 class LoadWaveformFileTests(unittest.TestCase):

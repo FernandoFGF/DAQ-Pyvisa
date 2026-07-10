@@ -341,9 +341,13 @@ class DAQGUIFunctions:
         from analysis.spectrum_analysis import plot_histogram_with_peaks as _phwp
         return _phwp(ax, data, peaks_result=peaks_result)
 
-    def calculate_dcr(self, num_files: int, time_str: str) -> dict:
-        from analysis.waveform_analysis import calculate_dcr as _dcr
-        return _dcr(num_files, time_str)
+    def calculate_dcr_from_timestamps(self, timestamps: list[float]) -> dict:
+        from analysis.waveform_analysis import calculate_dcr_from_timestamps as _dcr
+        return _dcr(timestamps)
+
+    def read_waveform_timestamps(self, path: str, prefix: str) -> list[float]:
+        from analysis.waveform_analysis import read_timestamps
+        return read_timestamps(path, prefix)
 
     def count_waveform_files(self, path: str, prefix: str):
         from analysis.waveform_analysis import count_files

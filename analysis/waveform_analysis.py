@@ -101,6 +101,58 @@ def count_files(path: str, prefix: str) -> Tuple[int, str]:
     return count, time_line
 
 
+def read_timestamps(path: str, prefix: str) -> list[float]:
+    """
+    Read TSR timestamps from all ``<prefix>_N.txt`` files in *path*.
+
+    Each segment file has the TSR value on its first line (a
+    floating-point number).  Returns a sorted list of timestamps
+    so consecutive differences are always positive.
+    """
+    import os
+
+    if not os.path.isdir(path):
+        return []
+
+    timestamps: list[float] = []
+    for fname in os.listdir(path):
+        if not fname.startswith(prefix + "_"):
+            continue
+        try:
+            with open(os.path.join(path, fname), encoding="utf-8") as fh:
+                timestamps.append(float(fh.readline().strip()))
+        except (ValueError, OSError):
+            continue
+
+    timestamps.sort()
+    return timestamps
+
+
+def calculate_dcr_from_timestamps(timestamps: list[float]) -> dict:
+    """
+    Compute DCR as the inverse of the mean time between consecutive files.
+
+    ``timestamps`` should be a sorted list of TSR values (seconds).
+    Returns::
+        {"ok": True, "dcr_value": <Hz>, "error": None}
+      or
+        {"ok": False, "dcr_value": None, "error": "<reason>"}
+    """
+    if len(timestamps) < 2:
+        return {"ok": False, "dcr_value": None,
+                "error": "Need at least 2 timestamps"}
+
+    diffs = [timestamps[i + 1] - timestamps[i] for i in range(len(timestamps) - 1)]
+    mean_diff = sum(diffs) / len(diffs)
+
+    if mean_diff <= 0:
+        return {"ok": False, "dcr_value": None,
+                "error": "Non-positive mean time difference"}
+
+    dcr = round(1.0 / mean_diff, 2)
+    return {"ok": True, "dcr_value": dcr, "error": None}
+
+
 def make_time_axis(num_points: int, length: int = 1000) -> np.ndarray:
     """
     Build the time axis used by slider_event: np.linspace(0, 1000, num_points).

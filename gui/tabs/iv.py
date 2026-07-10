@@ -224,6 +224,7 @@ def setting_iv(self):
     # IV Curves tab settings DAQ
     self.optionsIV = ctk.CTkFrame(self.tabviewIV.tab("DAQ"))
     self.optionsIV.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+    self.optionsIV.grid_columnconfigure((0, 1), weight=1)
 
     # The legacy SMU / Classic selector was removed; the SMU
     # card in the Connect tab is now the only way to choose the
@@ -274,19 +275,19 @@ def setting_iv(self):
     self.ch2IV.grid(row=0, column=1, padx=0, pady=(10, 5))
 
     self.iv_start = ctk.CTkLabel(self.optionsIV, text="Set voltage start:", anchor="w")
-    self.iv_start.grid(row=2, column=0, padx=20, pady=(10, 0))
+    self.iv_start.grid(row=2, column=0, padx=20, pady=(10, 0), columnspan=2, sticky="w")
     self.vStart = ctk.CTkEntry(self.optionsIV, placeholder_text="1V defalut")
-    self.vStart.grid(row=3, column=0, padx=20, pady=(0,5))
+    self.vStart.grid(row=3, column=0, padx=20, pady=(0,5), columnspan=2, sticky="ew")
 
     self.iv_stop = ctk.CTkLabel(self.optionsIV, text="Set voltage stop:", anchor="w")
-    self.iv_stop.grid(row=4, column=0, padx=20, pady=(5, 0))
+    self.iv_stop.grid(row=4, column=0, padx=20, pady=(5, 0), columnspan=2, sticky="w")
     self.vStop = ctk.CTkEntry(self.optionsIV, placeholder_text="-40V defalut")
-    self.vStop.grid(row=5, column=0, padx=20, pady=(0,5))
+    self.vStop.grid(row=5, column=0, padx=20, pady=(0,5), columnspan=2, sticky="ew")
 
     self.iv_step = ctk.CTkLabel(self.optionsIV, text="Set voltage step:", anchor="w")
-    self.iv_step.grid(row=6, column=0, padx=20, pady=(5, 0))
+    self.iv_step.grid(row=6, column=0, padx=20, pady=(5, 0), columnspan=2, sticky="w")
     self.vStep = ctk.CTkEntry(self.optionsIV, placeholder_text="0.05V defalut")
-    self.vStep.grid(row=7, column=0, padx=20, pady=(0,5))
+    self.vStep.grid(row=7, column=0, padx=20, pady=(0,5), columnspan=2, sticky="ew")
 
     self.start_button = ctk.CTkButton(self.optionsIV, text="Start", command=self.start_iv)
     self.start_button.grid(row=8, column=0, padx=20, pady=(15, 20), columnspan=2, sticky="s")

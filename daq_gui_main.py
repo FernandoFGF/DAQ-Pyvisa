@@ -720,7 +720,6 @@ try:
             def _on_error(msg):
                 print("[Spectrum] Error:", msg)
 
-            self._spectrum_user_stopped = False
             self.startSpec_button.configure(state="disabled")
             self.stopSpec_button.configure(state="normal")
 
@@ -735,8 +734,7 @@ try:
 
             def _reenable():
                 lm.beep()
-                if not self._spectrum_user_stopped:
-                    self.startSpec_button.configure(state="normal")
+                self.startSpec_button.configure(state="normal")
                 self.stopSpec_button.configure(state="disabled")
 
             self.gui_funcs.start_spectrum_full(
@@ -764,7 +762,6 @@ try:
             if acq is None:
                 print("[Spectrum] No hay medición en curso.")
                 return
-            self._spectrum_user_stopped = True
             print("[Spectrum] Solicitando parada tras la muestra actual...")
             acq.request_stop()
 
@@ -826,6 +823,7 @@ try:
                 self.save_entry.insert(0, default_name)
                 print(f"[Waveform] No file name set, using '{default_name}'.")
             name = self.save_entry.get()
+            self._last_wf_name = name
             channel = self.selected_channelWf.get()
             save_root = str(lm.get_path("Waveform"))
 
@@ -863,11 +861,9 @@ try:
 
             def _on_finish():
                 lm.beep()
-                if not getattr(self, "_waveform_user_stopped", False):
-                    self.start_buttonWf.configure(state="normal")
+                self.start_buttonWf.configure(state="normal")
                 self.stop_buttonWf.configure(state="disabled")
 
-            self._waveform_user_stopped = False
             self.start_buttonWf.configure(state="disabled")
             self.stop_buttonWf.configure(state="normal")
 
@@ -897,7 +893,6 @@ try:
             if acq is None:
                 print("[Waveform] No hay medición en curso.")
                 return
-            self._waveform_user_stopped = True
             print("[Waveform] Solicitando parada tras el segmento actual...")
             acq.request_stop()
 

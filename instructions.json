@@ -18,16 +18,19 @@
   },
   "waveform": {
     "rta": [
+      "El disparador (trigger) debe estar en modo Normal.",
       "Configurar Acquisition para las tomas que queremos.",
       "Configurar el tamaño de cada muestra.",
       "Pulsar en single y pulsar en Start."
     ],
     "rto": [
+      "El disparador (trigger) debe estar en modo Normal.",
       "Configurar Acquisition para las tomas que queremos.",
       "Configurar el tamaño de cada muestra.",
       "Pulsar en single y pulsar en Start."
     ],
     "keysight": [
+      "El disparador (trigger) debe estar en modo Normal.",
       "Configurar Acquisition como segmented.",
       "Configurar Acquisition para las tomas que queremos.",
       "Configurar el tamaño de cada muestra.",
